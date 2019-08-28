@@ -128,7 +128,7 @@ def fnEstimatePF(mdX, vdY):
 def fnDiagnostics(mdX, vdY, vdBetahat_matrix, iNobs):
     """
     Purpose:
-        To estimate Beta from Y = X Beta + Varepsilon using a built-in numpy function
+        Calculate standard error, t-values and p-values for the Betas
 
     Inputs:
         mdX                 matrix of doubles, the matrix of observations
