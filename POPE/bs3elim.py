@@ -6,16 +6,64 @@ bs3elim.py
 Purpose:
     To add the computation for x in system Ax = b into the e0_elim.py
 
+Version:
+    1    First, imported things from other files
+    2    Second, put it all together to use in incols.py
+
 Date:
-    2018/8/28
+    2018/8/29
 
 @author: Aishameriane Venes Schmidt
 """
 ###########################################################
 ### Imports
 import numpy as np
-from e0_elim import *
-from bs1for import *
+
+###########################################################
+### dS= fnCalcSum(mdA, vX, i)
+def fnCalcSum(mdA, vX, i):
+    """
+    Purpose:
+        Calculate the sum given by sum_j>i {a_ij \times x_j}
+
+    Inputs:
+        mdA     matrix with doubles
+        vX      vector with doubles
+        i       the index for the for loop
+
+    Return value:
+       
+    """
+    iN = len(vX)
+    dS = 0
+    for j in range(i+1, iN):
+        dS = dS + mdA[i,j] * vX[j]
+
+    return (dS)
+
+###########################################################
+### vX= fnBacksubs(mdA, vdB)
+def fnBacksubs(mdA, vdB):
+    """
+    Purpose:
+        To make the backsubstitution to solve the system Ax = b
+
+    Inputs:
+        mdA     matrix with doubles
+        vdB     vector with doubles
+
+    Return value:
+       vX       vector with doubles, solution to Ax = b
+    """
+    
+    iN = len(vdB)
+    vX  = np.zeros_like(vdB)
+    
+    for i in range(iN - 1, -1, -1):
+        dS = fnCalcSum(mdA, vX, i)
+        vX[i] = (vdB[i] - dS)/mdA[i,i]
+        
+    return(vX)
 ###########################################################
 ### vX= fnBacksubs(mdA, vdB)
 def fnBacksubs1(mC):
@@ -117,9 +165,9 @@ def ElimGauss(mC):
     iK= np.size(mC, 0)
     br= True
     for j in range(iK):
-        print ("Starting iteration ", j)
+#        print ("Starting iteration ", j)
         br= br and ElimColumn(mC, j)
-        print ("resulting in mC= \n", np.around(mC,2))
+#        print ("resulting in mC= \n", np.around(mC,2))
     return br
 
 ###########################################################
