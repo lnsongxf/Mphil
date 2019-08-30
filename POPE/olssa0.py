@@ -8,9 +8,16 @@ Purpose:
 
 Version:
     1       First start
+    2       Finished up until graphs part
+    
+
+To-do:
+    a. Clean code
+    b. Separate in functions and lib files
+    c. Organize output
 
 Date:
-    2019/08/29
+    2019/08/29, 2019/08/30
 
 Author:
     Aishameriane Venes Schmidt
@@ -21,8 +28,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import math as math
-
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 ###########################################################
 ### dY= emptyfunc(vX)
@@ -45,7 +51,7 @@ def emptyfunc(vX):
 ### main
 def main():
     # Magic numbers
-    dfInflation = pd.read_csv("C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 1\\Block 0\\Principles of Programming 2019-0\\Assignment\\OLS SA\\data\\sa0_180827.csv")
+    dfInflation = pd.read_csv("data\sa0_180827.csv")
     iR = dfInflation.shape[0]
     iC = dfInflation.shape[1]
     sStartDate = '1958/01'
@@ -92,36 +98,60 @@ def main():
     vIntercept = np.ones_like(dfInflationSubset["SA0"])
     dfInflationSubset["Intercept"] = vIntercept
 
+    ## Dummy for months
     vMonths = [dfInflationSubset.at[i, 'Period'].month for i in range(len(vIntercept))]
     dfInflationSubset['MDummy'] = vMonths
     dfMonthDummies = pd.get_dummies(dfInflationSubset['MDummy'], drop_first=True)
     dfInflationSubset = pd.concat([dfInflationSubset, dfMonthDummies], axis=1)
     dfInflationSubset.drop(['MDummy'], inplace=True, axis=1)    
-         
-    vDY1 = [(dfInflationSubset.at[i, 'Period'] == dfDates[0]) for i in range(len(vIntercept))]
-    vDY2 = [(dfInflationSubset.at[i, 'Period'] == dfDates[1]) for i in range(len(vIntercept))]
-    vDY3 = [(dfInflationSubset.at[i, 'Period'] == dfDates[2]) for i in range(len(vIntercept))]
-    vDY4 = [(dfInflationSubset.at[i, 'Period'] == dfDates[3]) for i in range(len(vIntercept))]
-    vDY5 = [(dfInflationSubset.at[i, 'Period'] == dfDates[4]) for i in range(len(vIntercept))]
-    vDY1 = np.array(vDY1*1)
-    vDY2 = np.array(vDY2*1)
-    vDY3 = np.array(vDY3*1)
-    vDY4 = np.array(vDY4*1)
-    vDY5 = np.array(vDY5*1)
     
-    dfInflationSubset['Y1973'] = vDY1*1
-    dfInflationSubset['Y1976'] = vDY2*1
-    dfInflationSubset['Y1979'] = vDY3*1
-    dfInflationSubset['Y1982'] = vDY4*1
-    dfInflationSubset['Y1990'] = vDY5*1
+    ## Dummy for the different years     
+    vDY1 = [(dfInflationSubset.at[i, 'Period'] >= dfDates[0]) for i in range(len(vIntercept))]  
+    vDY2 = [(dfInflationSubset.at[i, 'Period'] >= dfDates[1]) for i in range(len(vIntercept))]
+    vDY3 = [(dfInflationSubset.at[i, 'Period'] >= dfDates[2]) for i in range(len(vIntercept))]
+    vDY4 = [(dfInflationSubset.at[i, 'Period'] >= dfDates[3]) for i in range(len(vIntercept))]
+    vDY5 = [(dfInflationSubset.at[i, 'Period'] >= dfDates[4]) for i in range(len(vIntercept))]
+
+    dfInflationSubset['Y1973'] = np.array(vDY1)*1
+    dfInflationSubset['Y1976'] = np.array(vDY2)*1
+    dfInflationSubset['Y1979'] = np.array(vDY3)*1
+    dfInflationSubset['Y1982'] = np.array(vDY4)*1
+    dfInflationSubset['Y1990'] = np.array(vDY5)*1
     
-#    dfInflationSubset.columns
+    ## Assembling the vY with independent variable and mdX with the regressors
     mdX = dfInflationSubset[["Intercept", 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "Y1973", "Y1976", "Y1979", "Y1982","Y1990"]].copy()
     vdY = dfInflationSubset["Inflation"].copy()
     
     # Estimation
-    print(np.linalg.lstsq(mdX, vdY, rcond = None)[0])
+    print(np.around(np.linalg.lstsq(mdX, vdY, rcond = None)[0],4))
     print(np.average(vdY))
+    vdBetahat = np.linalg.lstsq(mdX, vdY, rcond = None)[0]
+    
+    # Graphs
+    ## Put y^ in a dataframe as well as the true values
+    
+    vYhat = pd.DataFrame(mdX @ vdBetahat)
+    dfCompare = pd.concat([vdY, vYhat], axis=1)
+    dfCompare = pd.concat([dfInflationSubset["Period"], dfCompare], axis=1)
+    dfCompare.columns = ["Date", "True Inflation", "Estimated Inflation"]
+    
+    plt.figure(figsize=(10,7))   # Choose alternate size (def= (6.4,4.8))
+    plt.subplot(2, 1, 1)            # Work with 2x1 grid, first plot
+    
+    plt.plot(dfCompare["Date"], dfInflationSubset["SA0"])                    # Simply plot the white noise
+    plt.legend(["SA0"])     # Add a legend
+    plt.title("Consumer price index SA0, US (1958-2018)")        # ... and a title
+
+    plt.subplot(2, 1, 2)            # Start with second plot
+    plt.plot(dfCompare["Date"], dfCompare[["True Inflation", "Estimated Inflation"]])
+    plt.ylabel("Inflation")
+    plt.legend(["True", "Estimated"]) 
+    plt.xlabel("Time")
+    plt.title("Real inflation and inflation estimated by a regression model")     # ... and name the graph
+#    plt.savefig("graphs/plot1.png") # Save the result
+    plt.show()                      # Done, show it
+    
+    
     # Output
     print ("This is an almost empty program\n")
 
