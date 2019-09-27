@@ -47,30 +47,30 @@ y_t = 100(log(Pt)-log(P_{t-1})
 
 ## What to deliver?
 
-    * A program that:
-        * Estimates the model;
-        * Gives the parameter output includind standard deviations;
-        * Returns the optimal loglikelihood;
-        * Returns the number of iterations used to optimize.
+   * A program that:
+       * Estimates the model;
+       * Gives the parameter output includind standard deviations;
+       * Returns the optimal loglikelihood;
+       * Returns the number of iterations used to optimize.
      
-     * Repeat the procedure for these three models:
-        * The pure regression model (without GARCH effects);
-        * The pure GARCH model (without mean effect, i.e., set \mu_t = \beta_0 constant)
-        * The full GARCH-M model, estimating full \theta = (\beta', \omega, \alpha, \delta)'
+   * Repeat the procedure for these three models:
+       * The pure regression model (without GARCH effects);
+       * The pure GARCH model (without mean effect, i.e., set \mu_t = \beta_0 constant)
+       * The full GARCH-M model, estimating full \theta = (\beta', \omega, \alpha, \delta)'
         
-     * Provide graphical outputs:
-        * Plot inflation y_t with the estimated mean process \mu_t
-        * Plot the standard deviation \sigma_t or variance \sigma_t^2
-        * Compare de density plots of:
-              * y_t
-              * \alpha_t = y_t - \mu_t
-              * \epsilon_t = \frac{\alpha_t}{\sigma_t}
-          * Which one seems to be normally distributed?
+   * Provide graphical outputs:
+       * Plot inflation y_t with the estimated mean process \mu_t
+       * Plot the standard deviation \sigma_t or variance \sigma_t^2
+       * Compare de density plots of:
+             * y_t
+             * \alpha_t = y_t - \mu_t
+             * \epsilon_t = \frac{\alpha_t}{\sigma_t}
+         * Which one seems to be normally distributed?
      
-     * Provide a shor report (max 5 pages excluding graphs/tables)
-        * Discuss the findings
-        * Problems encountered
-        * Other comments
+   * Provide a shor report (max 5 pages excluding graphs/tables)
+       * Discuss the findings
+       * Problems encountered
+       * Other comments
         
  ZIP everything and submit on canvas ready-to-run Python prorams with the data. If necessary add a readme.txt to run in a specific order.
  
