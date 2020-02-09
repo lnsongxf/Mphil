@@ -1,0 +1,253 @@
+---
+title: "Adv Econ II Assignment 5"
+author: "A. Schmidt"
+date: "2/9/2020"
+output: html_document
+---
+
+# Loading packages
+
+```{r}
+list.of.packages <- c("ggplot2", "latex2exp")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+library(ggplot2, quietly = TRUE)
+library(latex2exp, quietly = T)
+```
+
+# Generating data
+
+We are considering the following DGP:
+
+$$y_{it} = \beta x_{it} + \alpha_i + \varepsilon_{it}$$
+where $\alpha_{i} \sim \mathcal{N}(0, \sigma^2_a)$, $\varepsilon_{i} \sim \mathcal{N}(0, \sigma^2_\varepsilon)$. The regressor $x_{it}$ follows an AR(1) process given by
+
+$$x_{it} = \rho x_{i, t-1} + \pi \alpha_i + \theta \varepsilon_{i,t-1} + \xi_{it},$$
+where $\xi_{it} \sim \mathcal{N}(0, \sigma^2_{\xi})$. The process starts at
+
+$$x_{i0} = \frac{\pi \alpha_i}{1-\rho} + \frac{\theta \nu + \zeta}{\sqrt{1-\rho^2}},$$
+where both $\nu$ and $\zeta$ are i.i.d. following a standard normal distribution.
+
+## Magic Numbers
+
+The following variables must be entered by the user:
+
+* `iNobs` - Integer, the number of observations. Default value is 1000.
+* `dSigmaalpha` - Double, the variance of the random effect $\alpha_{i}$. Default value is 1.
+* `dSigmaepsilon` - Double, the variance of the error term from the regression equation, $\varepsilon_{it}$. Default value is 1.
+* `dSigmaxi` - Double, the variance of the random error term $\xi_{it}$ in the autoregressive process for $x_{it}$. Default value is 1.]
+* `dBeta` - Double, the parameter multiplying $x_{it}$ in the regression equation. Defailt value is 1.
+* `dRho` - Double, persistence parameter of the AR(1) process for $x_{it}$. Defailt value is 0.5.
+* `dPì` - Double, the coefficient of $\alpha_i$ in the autoregressive process for $x_{it}$. Notice that when $\pi \neq 0$, we no longer have a random effect in the regression equation. Default value is 1.
+* `dTheta` - Double, the coefficient multiplying $\varepsilon_{i, t-1}$ in the $x_{it}$ equation. When not zero, it introduces autocorrelation of the errors in the regression equation. Default value is 0. When zero, we have strong exogeneity of $x_{it}$.
+
+
+```{r}
+iNobs          <- 10
+dSigmaalpha    <- 1
+dSigmaepsilon  <- 1
+dSigmaxi       <- 1
+dBeta          <- 1
+dRho           <- 0.5
+dPi            <- 1
+dTheta         <- 0
+
+# Set a seed
+set.seed(6969)
+```
+
+## Generating data functions
+
+### Errors
+
+Errors are generating drawing from a normal distribution, where the number of observations as well as the mean and variance can be changed when calling the function.
+
+```{r}
+fGenError <- function(iNobs, dMu = 0, dSigma2 = 1)
+{
+  # Returns a vector with length iNobs with i.i.d observations
+  # from a normal density with mean dMu and variance dSigma2
+  vdError <- rnorm(iNobs, dMu, dSigma2)
+  return(vdError)
+}
+```
+
+
+### X
+
+The X variables follows an AR(1) process with a predetermined X0.
+
+```{r}
+fGenX <- function(iNobs, dPi = 1, vdAlpha, dRho = 0.5, dTheta = 0)
+{
+  # Generates X using a predetermined first element and an autoregressive process for the others.
+  dNu    <- fGenError(1)
+  dZeta  <- fGenError(1)
+  dXi0   <- ((dPi*vdAlpha[1])/(1-dRho))+ ((dTheta*dNu+dZeta)/(sqrt(1-dRho^2)))
+  vdX     <- rep(0, iNobs)
+  vdX[1]  <- dXi0
+
+  for(i in 2:iNobs){
+    vdX[i] <- dRho * vdX[i-1] + dPi * vdAlpha[i] + dTheta * vdEpsilon[i-1] + vdXi[i]
+  }
+  
+  return(vdX)
+}
+```
+
+### Y
+
+Generating $y$ requires to have $\beta$, $x_{it}$, $\alpha_i$ and $\varepsilon_{it}$ to assemble the regression.
+
+```{r}
+fGenY <- function(dBeta = 1, vdX, vdAlpha = 0, vdEpsilon){
+  
+  vdY = dBeta * vdX + vdAlpha + vdEpsilon
+  
+  return(vdY)
+}
+```
+
+### Instruments
+
+Three instruments' matrices are used:
+
+\begin{equation}
+Z_{1i} = 
+\begin{bmatrix}
+x_{i1} \\ 
+x_{i2} \\
+\vdots \\
+x_{i, T-1}
+\end{bmatrix} \qquad
+Z_{2i} = 
+\begin{bmatrix}
+x_{i1} & 0 & \cdots & 0 \\ 
+0 & x_{i2} & & \vdots \\
+\vdots & & \ddots & 0 \\
+0 & \cdots & 0 & x_{i, T-1}
+\end{bmatrix} \qquad
+Z_{3i} = 
+\begin{bmatrix}
+x_{i1} & 0 & 0 & \cdots & 0 & \cdots & 0 \\ 
+0 & x_{i1} & x_{i2} & \cdots & 0 & \cdots & 0 \\
+.& . & . & \cdots & . & \cdots & . \\
+0 & 0 & 0 &  \cdots & x_{i1} & \cdots &  x_{i, T-1}
+\end{bmatrix}
+\end{equation}
+
+```{r}
+
+  fGenInstruments <- function(vdX, inst){
+    dNum <- length(vdX[1:(length(vdX)-1)])
+    
+    if (inst == 1){
+      
+      mdZ <- vdX[1:dNum]  
+    
+      } else if (inst == 2){
+      
+        mdZ <- diag(vdX[1:dNum])  
+    
+        } else {
+      
+          mdZ <- matrix(0, nrow = dNum, ncol = (0.5*dNum*(dNum-1)+dNum))
+      
+          for (i in 1:nrow(mdZ)){
+        
+            if (i == 1){
+          
+              mdZ[1,] <- c(vdX[1], rep(0, (0.5*dNum*(dNum-1))+dNum-1))
+        
+              } else {
+          
+                mdZ[i,] <- c(rep(0, (0.5*i*(i-1))), vdX[1:i], rep(0, ((0.5*dNum*(dNum-1)+dNum))-length(c(rep(0, (0.5*i*(i-1))), vdX[1:i]))))
+                }
+            }  
+        }
+    return(mdZ)
+    }
+```
+
+### Generating the data
+
+```{r}
+# Errors 
+  vdAlpha    <- fGenError(iNobs, 0, dSigmaalpha)
+  vdEpsilon  <- fGenError(iNobs, 0, dSigmaepsilon)
+  vdXi       <- fGenError(iNobs, 0, dSigmaxi)
+
+# X
+  vdX <- fGenX(iNobs, dPi, vdAlpha, dRho, dTheta)
+
+# Y
+  vdY <- fGenY(dBeta, vdX, vdAlpha, vdEpsilon)
+
+# Instruments
+  mdZ1 <- fGenInstruments(vdX, 1)
+  mdZ2 <- fGenInstruments(vdX, 2)
+  mdZ3 <- fGenInstruments(vdX, 3)
+
+# Lagged Variables
+  vdXlag  <- c(NA, vdX[seq_along(vdX) -1])
+  vdYlag  <- c(NA, vdY[seq_along(vdY) -1])
+  vdXdiff <- vdX[2:length(vdX)] - vdXlag[2:length(vdXlag)]
+  vdYdiff <- vdY[2:length(vdY)] - vdYlag[2:length(vdYlag)]
+```
+
+### Estimators
+
+#### OLS
+
+The OLS estimator is given by $\hat{\beta} = (X'X)^{-1}X'Y$ with standard error given by $\hat{\sigma}^2_{\varepsilon}(X'X)^{-1}$.
+
+##### Regular OLS:
+
+```{r}
+  fEstOLS <- function(vdX, vdY) {
+    vdBetaOLS <- solve((t(vdX)%*%vdX))%*%(t(vdX)%*%vdY)
+  }
+```
+
+##### Pooled OLS:
+
+```{r}
+  fEstPOLS <- function(vdX, vdY) {
+    
+  }
+```
+
+##### First Difference OLS:
+
+```{r}
+  fEstFDOLS <- function(vdX, vdY) {
+    
+  }
+```
+
+##### Whithin OLS:
+
+```{r}
+  fEstFEOLS <- function(vdX, vdY) {
+    
+  }
+```
+
+#### Instrumental variables estimator
+
+```{r}
+  fEstIV <- function(vdX, vdY, mdZ) {
+    
+  }
+```
+
+#### GMM
+
+#### Instrumental variables estimator
+
+```{r}
+  fEstGMM <- function(vdX, vdY, mdZ) {
+    
+  }
+
+```
