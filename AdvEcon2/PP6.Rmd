@@ -1,0 +1,420 @@
+---
+title: "Adv Econ II Assignment 5 - Programming"
+author: "A. Schmidt, E. Ugulava, X. Lin"
+date: "02/10/2020"
+output: html_document
+---
+
+To make references: bibliography: references.bib
+
+
+# Loading packages
+
+```{r, warning = FALSE, message = FALSE}
+list.of.packages <- c("ggplot2", "latex2exp")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+library(ggplot2, quietly = TRUE)
+library(latex2exp, quietly = T)
+```
+
+# Generating data 
+
+We are considering the following DGP:
+
+$$y_{it} = \beta x_{it} + \alpha_i + \varepsilon_{it}$$
+where $\alpha_{i} \sim \mathcal{N}(0, \sigma^2_a)$, $\varepsilon_{i} \sim \mathcal{N}(0, \sigma^2_\varepsilon)$. The regressor $x_{it}$ follows an AR(1) process given by
+
+$$x_{it} = \rho x_{i, t-1} + \pi \alpha_i + \theta \varepsilon_{i,t-1} + \xi_{it},$$
+where $\xi_{it} \sim \mathcal{N}(0, \sigma^2_{\xi})$. The process starts at
+
+$$x_{i0} = \frac{\pi \alpha_i}{1-\rho} + \frac{\theta \nu + \zeta}{\sqrt{1-\rho^2}},$$
+where both $\nu$ and $\zeta$ are i.i.d. following a standard normal distribution.
+
+## Magic Numbers
+
+The following variables must be entered by the user:
+
+* `iNobs` - Integer, the number of observations. Default value is 100.
+* `iTime` - Integer, the number of time periods in which we observe each individual. Default is 5.
+* `iIter` - Integer, the number of iterations for the simulation. Default is 1000.
+* `dSigmaalpha` - Double, the variance of the random effect $\alpha_{i}$. Default value is 1.
+* `dSigmaepsilon` - Double, the variance of the error term from the regression equation, $\varepsilon_{it}$. Default value is 1.
+* `dSigmaxi` - Double, the variance of the random error term $\xi_{it}$ in the autoregressive process for $x_{it}$. Default value is 1.]
+* `dBeta` - Double, the parameter multiplying $x_{it}$ in the regression equation. Defailt value is 1.
+* `dRho` - Double, persistence parameter of the AR(1) process for $x_{it}$. Defailt value is 0.5.
+* `dPì` - Double, the coefficient of $\alpha_i$ in the autoregressive process for $x_{it}$. Notice that when $\pi \neq 0$, we no longer have a random effect in the regression equation. Default value is 1.
+* `dTheta` - Double, the coefficient multiplying $\varepsilon_{i, t-1}$ in the $x_{it}$ equation. When not zero, it introduces autocorrelation of the errors in the regression equation. Default value is 0. When zero, we have strong exogeneity of $x_{it}$.
+
+
+```{r}
+iNobs          <- 10
+iTime          <- 3
+iIter          <- 1
+dSigmaalpha    <- 1
+dSigmaepsilon  <- 1
+dSigmaxi       <- 1
+dBeta          <- 1
+dRho           <- 0.5
+dPi            <- 1
+dTheta         <- 0
+
+# Set a seed
+set.seed(6969)
+```
+
+## Generating data functions
+
+### Errors
+
+Errors are generating drawing from a normal distribution, where the number of observations as well as the mean and variance can be changed when calling the function.
+
+```{r}
+fGenError <- function(iTime, dMu = 0, dSigma2 = 1)
+{
+  # Returns a vector with length iNobs with i.i.d observations
+  # from a normal density with mean dMu and variance dSigma2
+  vdError <- rnorm(iTime, dMu, dSigma2)
+  return(vdError)
+}
+```
+
+
+### X
+
+The X variables follows an AR(1) process with a predetermined X0.
+
+```{r}
+fGenX <- function(iTime, dPi = 1, dAlpha, dRho = 0.5, dTheta = 0, vdEpsilon, vdXi)
+{
+  # Generates X using a predetermined first element and an autoregressive process for the others.
+  dNu    <- fGenError(1)
+  dZeta  <- fGenError(1)
+  dXi0   <- ((dPi*dAlpha)/(1-dRho))+ ((dTheta*dNu+dZeta)/(sqrt(1-dRho^2)))
+  vdX     <- rep(0, iTime)
+  vdX[1]  <- dXi0
+
+  for(i in 2:iTime){
+    #print(i)
+    vdX[i] <- dRho * vdX[i-1] + dPi * dAlpha + dTheta * vdEpsilon[i-1] + vdXi[i]
+  }
+  
+  return(vdX)
+}
+```
+
+### Y
+
+Generating $y$ requires to have $\beta$, $x_{it}$, $\alpha_i$ and $\varepsilon_{it}$ to assemble the regression.
+
+```{r}
+fGenY <- function(dBeta = 1, vdX, dAlpha = 0, vdEpsilon){
+  
+  vdY = dBeta * vdX + rep(dAlpha, iTime) + vdEpsilon
+  
+  return(vdY)
+}
+```
+
+### Whole panel
+
+Generating the panel requires that for each individual we simulate the three errors, the $X$ variable and put together with $\beta$ to create $Y$.
+
+```{r}
+fGenPanel <- function(iNobs = 100, iTime = 5, dPi = 1, dRho = 0.5, dTheta = 0, dBeta = 1, dSigmaalpha = 1, dSigmaepsilon = 1, dSigmaxi = 1) {
+  for (i in 1:iNobs){
+    # Errors 
+    dAlpha     <- fGenError(1, 0, dSigmaalpha)
+    vdEpsilon  <- fGenError(iTime, 0, dSigmaepsilon)
+    vdXi       <- fGenError(iTime, 0, dSigmaxi)
+
+    # X
+    vdX <- fGenX(iTime, dPi, dAlpha, dRho, dTheta, vdEpsilon, vdXi)
+
+    # Y
+    vdY <- fGenY(dBeta, vdX, dAlpha, vdEpsilon)
+    
+    # Lagged Variables
+    vdXlag  <- c(NA, vdX[seq_along(vdX) -1])
+    vdYlag  <- c(NA, vdY[seq_along(vdY) -1])
+    vdXdiff <- vdX - vdXlag
+    vdYdiff <- vdY - vdYlag
+      
+    # Assembling the panel
+  
+    if (i == 1) {
+      dfPanel <- data.frame(cbind(rep(i, iTime), 1:iTime, rep(dAlpha, iTime), vdEpsilon, vdXi, vdX, vdY, vdXdiff, vdYdiff))
+    } else {
+      dfPanel <- data.frame(rbind(dfPanel, cbind(rep(i, iTime), 1:iTime, rep(dAlpha, iTime), vdEpsilon, vdXi, vdX, vdY, vdXdiff, vdYdiff)))
+    }
+  }
+  names(dfPanel) <- c("Individual", "Time", "Alpha", "Epsilon", "Xi", "X", "Y", "Xdiff", "Ydiff")
+
+  return(dfPanel)
+}
+```
+
+### Instruments
+
+Three instruments' matrices are used:
+
+\begin{equation}
+Z_{1i} = 
+\begin{bmatrix}
+x_{i1} \\ 
+x_{i2} \\
+\vdots \\
+x_{i, T-1}
+\end{bmatrix} \qquad
+Z_{2i} = 
+\begin{bmatrix}
+x_{i1} & 0 & \cdots & 0 \\ 
+0 & x_{i2} & & \vdots \\
+\vdots & & \ddots & 0 \\
+0 & \cdots & 0 & x_{i, T-1}
+\end{bmatrix} \qquad
+Z_{3i} = 
+\begin{bmatrix}
+x_{i1} & 0 & 0 & \cdots & 0 & \cdots & 0 \\ 
+0 & x_{i1} & x_{i2} & \cdots & 0 & \cdots & 0 \\
+.& . & . & \cdots & . & \cdots & . \\
+0 & 0 & 0 &  \cdots & x_{i1} & \cdots &  x_{i, T-1}
+\end{bmatrix}
+\end{equation}
+
+```{r} 
+
+  fGenInstruments <- function(vdX, inst){
+    dNum <- length(vdX[1:(length(vdX)-1)])
+    
+    if (inst == 1){
+      
+      mdZ <- vdX[1:dNum]  
+    
+      } else if (inst == 2){
+      
+        mdZ <- diag(vdX[1:dNum])  
+    
+        } else {
+      
+          mdZ <- matrix(0, nrow = dNum, ncol = (0.5*dNum*(dNum-1)+dNum))
+      
+          for (i in 1:nrow(mdZ)){
+        
+            if (i == 1){
+          
+              mdZ[1,] <- c(vdX[1], rep(0, (0.5*dNum*(dNum-1))+dNum-1))
+        
+              } else {
+          
+                mdZ[i,] <- c(rep(0, (0.5*i*(i-1))), vdX[1:i], rep(0, ((0.5*dNum*(dNum-1)+dNum))-length(c(rep(0, (0.5*i*(i-1))), vdX[1:i]))))
+                }
+            }  
+        }
+    return(mdZ)
+    }
+```
+
+#### First difference matrix
+
+We can build a matrix $D$ that takes the first difference when multiplied by a vector. For example, if $T=3$, the matrix $D$ will be given by:
+
+\begin{equation}
+D = 
+  \begin{bmatrix}
+  -1 & 1 & 0 \\
+  0 & -1 & 1 \\
+  \end{bmatrix}.
+\end{equation}
+
+Then, the following happens:
+
+\begin{equation}
+D \cdot X_i =  
+  \begin{bmatrix}
+  -1 & 1 & 0 \\
+  0 & -1 & 1 \\
+  \end{bmatrix} \cdot   
+  \begin{bmatrix}
+  x_{i1} \\
+  x_{i2} \\
+  x_{i3}
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+  x_{i2} - x_{i1} \\
+  x_{i3} - x_{i2}
+  \end{bmatrix}
+\end{equation}
+
+```{r}
+
+    fGenD <- function(iTime) {
+          viD <- c(-1, 1)
+          miD <- matrix(0, nrow = iTime-1, ncol = iTime)
+   
+          for (i in 1:(iTime-1)){
+            miD[i, i:(i+1)] <- viD
+          }
+          
+          return(miD)
+    }
+
+```
+
+
+#### Weighting matrix
+
+  The weighting matrix is given by
+  
+  $$W_N = \left(\sum_{i=1}^N Z_i'DD'Z_i \right)^{-1}.$$
+
+```{r}
+  fGenWeights <- function(iTime, ldZ) {
+      
+      mdSum <- 0
+      miD <- fGenD(iTime)
+  
+      for (i in ldZ){
+        mdSum <- mdSum + t(i) %*% miD %*% t(miD) %*% i
+      }
+      
+      mdWN <- solve(mdSum)
+      
+      return(mdWN)
+  }
+```
+
+### Generating the data
+
+Panel data is different from simply making a regression because we will have repeated $i$ and $t$. In here, for each individual $i$ we create $\alpha_i$, $\varepsilon_i$ and $\xi_i$ inside a loop and put everything together into a data frame.
+
+```{r}
+  # Generates the panel
+  dfPanel <- fGenPanel(iNobs, iTime, dPi, dRho, dTheta, dBeta, dSigmaalpha, dSigmaepsilon, dSigmaxi)
+
+  # Creates lists with instruments for each individual
+  ldZ1 <- list(1:iNobs)
+  ldZ2 <- list(1:iNobs)
+  ldZ3 <- list(1:iNobs)
+  
+  # This should be computed using X or Xdiff?
+  for (i in 1:iNobs){
+    ldZ1[[i]] <- fGenInstruments(dfPanel$X[dfPanel$Individual == i], 1)
+    ldZ2[[i]] <- fGenInstruments(dfPanel$X[dfPanel$Individual == i], 2)
+    ldZ3[[i]] <- fGenInstruments(dfPanel$X[dfPanel$Individual == i], 3)
+  }
+
+```
+
+### Estimators
+
+#### OLS
+
+The OLS estimator is given by $\hat{\beta} = (X'X)^{-1}X'Y$ with standard error given by $\hat{\sigma}^2_{\varepsilon}(X'X)^{-1}$.
+
+##### Pooled OLS
+
+We use the formula from [@cameron2005] for the Pooled OLS (adapted for the fact that we have only one explanatory variable):
+
+\begin{equation}
+  \hat{\beta}_{\text{POLS}} = \left[\sum_{i=1}^N \sum_{t=1}^T x_{it}^2 \right]^{-1} \sum_{i=1}^N \sum_{t=1}^T x_{it}y_{it}
+\end{equation}
+
+```{r}
+  fEstPOLS <- function(dfPanel, iNobs, iTime) {
+    
+    dX2sum <- 0
+    dXYsum <- 0
+    
+    for (i in iNobs){
+      for (j in iTime){
+        dX2sum <- dX2sum + (dfPanel$X[dfPanel$Individual == i, dfPanel$Time == j])^2
+        dXYsum <- dXYsum + (dfPanel$X[dfPanel$Individual == i, dfPanel$Time == j])*(dfPanel$Y[dfPanel$Individual == i, dfPanel$Time == j])
+      }
+    }
+    
+    dBetaPOLS <- (1/dX2sum)*dXYsum
+    
+    return(dBetaPOLS)
+  }
+```
+
+##### First Difference OLS:
+
+```{r, EVAL = FALSE}
+  fEstFDOLS <- function(vdX, vdY) {
+    
+  }
+```
+
+##### Whithin OLS:
+
+We use the formula from [@cameron2005] for the Whithin or Fixed Effects OLS (page 726):
+
+\begin{equation}
+  \hat{\beta}_{\text{FEOLS}} = \left[\sum_{i=1}^N \sum_{t=1}^T (x_{it}-\bar{x}_i)^2 \right]^{-1} \sum_{i=1}^N \sum_{t=1}^T (x_{it}-\bar{x}_i)(y_{it}-\bar{y}_i)
+\end{equation}
+
+TBC
+
+```{r, eval = FALSE}
+  fEstFEOLS <- function(dfPanel, iNobs, iTime) {
+    mdQN <- 
+  }
+```
+
+#### Instrumental variable estimator / GMM (?)
+
+For the first instrument we have exact identification so it is possible to compute $\hat{\beta}_{\text{IV}}$ by using $(Z'X)^{-1}Z'Y$. For the other two instruments, we need to minimize the criteria function
+
+$$Q_N(\beta)= g_N'(\beta)W_N g_N(\beta).$$
+
+```{r}
+  fEstIV <- function(dfPanel, iTime, ldZ, type) {
+    if (type == 1){ # For the first instrument (column instrument)
+      vdBetaIV <- solve(t(sapply(sapply(ldZ, rbind), rbind)) %*% dfPanel$Xdiff[!is.na(dfPanel$Xdiff)]) %*% t(sapply(sapply(ldZ, rbind), rbind)) %*% dfPanel$Ydiff[!is.na(dfPanel$Ydiff)]
+      
+    } else if (type %in% c(2,3)) { # For the second and third instrument
+      
+      mdWN <- fGenWeights(iTime, ldZ)
+    
+      # Stack the instruments
+      mdZ <- NA
+      for (i in ldZ){
+        mdZ <- rbind(mdZ, i)
+      }
+      mdZ <- mdZ[-1,]
+    
+      # Stack Xdiff
+      vdX <- dfPanel$Xdiff[!is.na(dfPanel$Xdiff)]
+      
+      # Stack Ydiff
+      vdY <- dfPanel$Ydiff[!is.na(dfPanel$Ydiff)]
+      
+      # Criteria function
+      fGenQN <- function(dBetahat) (t(t(mdZ) %*% (vdY - vdX * dBetahat)) %*% mdWN %*% (t(mdZ) %*% (vdY - vdX * dBetahat)))
+      
+      # Optimization
+      vdBetaIV <- optimize(fGenQN, interval = c(-5,5), tol = 0.00001)$minimum
+
+    } else {
+      vdBetaIV <- 0
+      print("Invalid instrument")
+    }
+    
+      return(vdBetaIV)  
+  }
+```
+
+# Estimating stuff
+
+```{r}
+  # This computes the BetaIV
+  dBetaIV1 <- fEstIV(dfPanel, iTime, ldZ1, type=1)
+  dBetaIV2 <- fEstIV(dfPanel, iTime, ldZ2, type=2)
+  dBetaIV3 <- fEstIV(dfPanel, iTime, ldZ3, type=3)
+
+```
+
+# References
