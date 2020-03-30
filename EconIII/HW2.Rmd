@@ -993,10 +993,10 @@ we have the same equations above for the IRF of the x (which represents the AR(3
 $$\begin{aligned}
   \tilde{y}_{s-1} &= y, \\
   \tilde{y}_s &= y + 0, \\
-  \tilde{y}_{s+1} &= y + \beta \frac{\partial X_{s}}{\partial v_s} \epsilon \\
-  \tilde{y}_{s+2} &= y + \psi_1 \frac{\partial Y_{s+1}}{\partial v_s} \epsilon +\beta \frac{\partial X_{s+1}}{\partial v_s}\epsilon \\
-  \tilde{y}_{s+3} &= y + \psi_1 \frac{\partial Y_{s+2}}{\partial v_s} \epsilon + \psi_2 \frac{\partial Y_{s+1}}{\partial v_s} \epsilon +\beta \frac{\partial X_{s+2}}{\partial v_s} \epsilon\\
-  \tilde{y}_{s+j} &= y + \psi_1 \frac{\partial Y_{s+j-1}}{\partial v_s} \epsilon + \psi_2 \frac{\partial Y_{s+j-2}}{\partial v_s} \epsilon + \psi_3 \frac{\partial Y_{s+j-3}}{\partial v_s} \epsilon +\beta \frac{\partial X_{s+j-1}}{\partial v_s} \epsilon,\ j > 3
+  \tilde{y}_{s+1} &= y + \beta \frac{\partial X_{s}}{\partial v_s} \\
+  \tilde{y}_{s+2} &= y + \psi_1 \frac{\partial Y_{s+1}}{\partial v_s} +\beta \frac{\partial X_{s+1}}{\partial v_s} \\
+  \tilde{y}_{s+3} &= y + \psi_1 \frac{\partial Y_{s+2}}{\partial v_s} + \psi_2 \frac{\partial Y_{s+1}}{\partial v_s} +\beta \frac{\partial X_{s+2}}{\partial v_s}\\
+  \tilde{y}_{s+j} &= y + \psi_1 \frac{\partial Y_{s+j-1}}{\partial v_s}+ \psi_2 \frac{\partial Y_{s+j-2}}{\partial v_s} + \psi_3 \frac{\partial Y_{s+j-3}}{\partial v_s} +\beta \frac{\partial X_{s+j-1}}{\partial v_s},\ j > 3
 \end{aligned}$$
 
 Given this, we can write a function that will do the recursions:
