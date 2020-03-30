@@ -1141,3 +1141,6 @@ grid.arrange(p0, p1, nrow = 2)
 
 ```
 
+As discussed before, the AR(3) model provides some sort of persistence in the GDP series. Thus, the IRF for GDP growth is in line with what is expected from this model. That is, we see that a positive shock tends to gradually stabilize over the quarters. Regarding unemployment, we observer a slower movement back to the initial levels. This might be a result of the cyclical behaviour of unemployment discussed previously, which ended up being reflecting on how it responds to shocks over the economic activity.
+
+However, those interpretations must be taken with cautious, given that the confidence intervals for the IRF are not available and we do not know exactly in which lags they are significantly different from zero.
