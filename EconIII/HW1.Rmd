@@ -1,7 +1,7 @@
 ---
 title: "Econometrics III HW - part 1"
 author: "A. Schmidt and P. Assunção"
-date: "10-3-2020"
+date: "March, 2020."
 output:
   pdf_document: default
   html_document:
@@ -9,9 +9,6 @@ output:
 bibliography: references.bib
 ---
 
-# Loading packages and helper functions
-
-See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
 # Verify if a package is already installed, if not, download and install before loading. 
@@ -448,22 +445,7 @@ desc <- function(x) {
 
 # Assignment 1
 
-## Pendências
-
-\begin{itemize}
-\item \sout{Adicionar o algoritmo de estimação}
-\item \sout{Adicionar o algoritmo de previsão}
-\item \sout{Arrumar o layout das tabelas de descritivas}
-\item \sout{Arrumar as funções de histograma e autocorrelação}
-\item \sout{Colocar referências}
-\item \sout{Arrumar a última questão para não estimar incluindo os dados extras.}
-\item (caso dê tempo) Colocar os resultados dos modelos em uma só tabela
-\item (caso dê tempo) Deixar os gráficos das previsões como o último gráfico
-\item Limpar comentários (apenas no final)
-\item Quebrar as linhas de código
-\end{itemize}
-
-**OBS:** Para instalar o latex (caso não tenha instalado no computador e só quer usar pro R Studio), podes usar o seguinte: `install.packages("tinytex")` e `tinytex::install_tinytex()` Fontehttps://bookdown.org/yihui/rmarkdown/installation.html
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment). Click [here](https://raw.githubusercontent.com/aishameriane/Mphil/master/EconIII/HW1.Rmd?token=AAVGJTXQT3V6YY26KV7D77K6RNLDS) to access the code. In particular, we are using our own modified functions for ACF/PACF, histograms and summary statistics that are not being shown in this report.
 
 ## Introduction
 
@@ -473,10 +455,13 @@ _Let us go back in time to the first quarter of 2009. The world economy has just
 
 Import using read.csv2() function (remember to change the directory name - in VU computers you can only read from the downloads folder).
 
-```{r} 
-#dfData01 <- read.csv2("C:\\Users\\palom\\OneDrive\\Mestrado\\Tinbergen Institute\\Material\\Y1 - Block 4\\Econometrics III\\HW_1\\data_assign_p1.csv", sep = ",", dec = ".", header = TRUE)
+```{r}
+urlRemote  <- "https://raw.githubusercontent.com/aishameriane"
+pathGithub <- "/Mphil/master/EconIII/data_assign_p1.csv"
+token      <- "?token=AAVGJTXCFWWNBCCXWYDJQM26RLSEY"
 
-dfData01 <- read.csv2("https://raw.githubusercontent.com/aishameriane/Mphil/master/EconIII/data_assign_p1.csv?token=AAVGJTT7NBFAQSTHXZ6A2US6QMGLY", sep = ",", dec = ".", header = TRUE)
+url      <- paste0(urlRemote, pathGithub, token)
+dfData01 <- read.csv2(url, sep = ",", dec = ".", header = TRUE)
 ```
 
 Check if everything is ok with the dataset: header and tail and summary statistics to check for missing data/outliers. We can see from the head and tail that the Data set indeed goes until the second quarter of 2009 and at least those observations seems to be completely filled with adequate ranges.
@@ -532,17 +517,13 @@ p2 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 12, type = "part
 grid.arrange(plotSeries, grid.arrange(p1, p2, nrow = 1), nrow = 2)
 ```
 
-**Comments on the series:** From the graph of the series (top graph in the picture above), the series of the Dutch GDP quarterly growth visually doesn't seem to be stationary, since it looks like the volatility in the 90s is smaller than the volatility in the 2000s. Also, there is an apparent strutural break in 2008, which most likely is associated with the financial crisis.
+**Comments on the series:** From the graph (top graph in the picture above), the series of the Dutch GDP quarterly growth visually does not seem to be stationary, since it looks like the volatility in the 90s is smaller than the volatility in the 2000s. Also, there is an apparent strutural break in 2008, which most likely is associated with the financial crisis.
 
 **Comments on the ACF/PACF graphs**: Since the ACF is within the confidence interval (represented by the horizontal blue lines), there is no evidence of autocorrelation between the GDP growth from time $t=0$ and $t=h$, for $h = 2, \ldots, 12$ (where 12 lags represents 3 years for quaterly data), i.e., the ACF is statistically insignificant (for a 5% significance level) from lag $h=2$ onward, when considering a bandwitch of 12. Note, however, that autocorrelation in the first lag is very close to the  upper bound of the confidence interval, which offers evidence for the existance of some relevant autocorrelation between the current quartely GDP growth and the growth in the period just before. The same applies for the PACF.
 
-*PALOMA:* Acho que aqui seria bom ressaltar que não tem autocorrelação, com excessão do lag 1 (se foi isso que vc quis dizer, desculpe). Talvez algo como "Since the ACF is mostly within the confidence interval (represented by the horizontal blue lines), there is little evidence of autocorrelation between the GDP growth from time $t$ up until $t+12$ (3 years for quaterly data), since ACF is statistically insignificant (for a 5% significance level). Note, however, that autocorrelation in the first lag is very close to the  upper bound of the confidence interval, which offers evidence for the existance of some relevant autocorrelation between the current quartely GDP growth and the growth in the period just before. The same applies for the PACF" **Aisha**: Eu quis dizer isso, mas depois que li seu comentário voltei no que eu escrevi e realmente não ficou claro. Copiei a sua sugestão e adaptei um pouco o texto pra tentar deixar coerente, mas é bom dar uma última olhada quando discutirmos.
+To further investigate the apparent difference in the volatility behavior, we have below the comparison for the descriptive statistics of the GDP Growth from Q1 1990 to Q4 1996 in the first column and the same descriptives for the series from Q1 2000 to Q4 2006. Notice that we are not including the period where change in volatility occured, so both columns should have near similar behaviors. However, we observe that indeed there is a discrepancy on the standard deviations, which is consistent to the visual inspection in the graph.
 
-*PERGUNTA:* (Aisha) Mantemos o histograma nessa aqui? Uma alternativa seria ao invés do histograma colocar o gráfico da série. *RESPOSTA:* (Paloma) Acho que como não pede o histograma, não tem necessidade colocar. Com "gráfico" da série, vc quer dizer algo como o gráfico que tem mais acima? *RESPOSTA:* (Aisha) Sim, pensei em se tirar o histograma então dá pra colocar o gráfico da série, já que pede a ACF e PACF tudo na mesma questão. Eu coloquei agora como pensei pra vc dar uma olhada como fica. Mudei um pouco a ordem do texto já que os gráficos agora estão todos juntos.
-
-To further investigate the apparent difference in the volatility behavior, we have below the comparison for the descriptive statistics of the GDP Growth from Q1 1990 to Q4 1996 in the first column and the same descriptives for the series from Q1 2000 to Q4 2006. Notice that we are not including the period where the structural break occured, so both columns should have near similar behaviors. However, we observe that indeed there is a discrepancy on the standard deviations, which is consistent to the visual inspection in the graph.
-
-We will not in here make a model considering that the series could possibly be non-stationary, but it is important to have in mind that some of the techniques we saw in class only would apply assuming stability of the AR coefficients.
+We will not in here make a model considering that the series could possibly be non-stationary, but it is important to have in mind that some of the techniques we saw in class would only apply if assuming stability of the AR coefficients.
 
 ```{r, echo = FALSE}
 # 90's versus 00's data
@@ -572,7 +553,7 @@ descriptives00 %>%
 
 _Estimate an AR(p) model for the same time-series. Please use the general-to-specific modeling approach by starting with a total p = 4 lags and removing insignificant lags sequentially. Report the final estimated AR(p) model, working at a 5% significance level. Comment on the estimated coefficients. What do these coefficients tell you about the dynamic properties of the GDP quarterly growth rate?_
 
-**Comments about the estimation procedure**: We opted by a model including the intercept because from the graphic in the previous items it is clear that the series is not centered at zero.
+**Comments about the estimation procedure**: We opted by a model including the intercept because, from the graphic in the previous item, it is clear that the series is not centered at zero.
 
 We used the function `Arima()` from the `forecast` package (source code available at: https://www.rdocumentation.org/packages/forecast/versions/8.11/source), which uses the same estimation procedure as the `arima()` function that comes with the `stats` package (source code available here: https://svn.r-project.org/R/trunk/src/library/stats/R/arima.R). The estimation procedure, roughly speaking, is based on the maximum likelihood method. Since this is a numerical procedure (i.e., it requires a numerical optmization), there is a need for an initial value. The package uses the conditional sum of squares to initialize the algorithm. We tested the estimation routine with and without this initialization method and the results were the same, so we opted for having the initial condition for better performance in terms of computational time (although for this very simple model this doesn't make any significant difference).
 
@@ -644,17 +625,21 @@ As for the maximum likelihood procedure, it is done by filtering. More specifica
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-**Comments on the results:** Keeping only the first lag in the model is in line with the results from the ACF/PACF, and the relationship between the previous period with current period for economic series was reported in @nelson1982 for the US Economy. The coefficient suggests a positive effect of `r AR1coef$Estimate[1]` (se = `r AR1coefsderror`; p-value= `r AR1coefpvalue`) of GDP growth in previous quarter on the growth of current quarter. Thus, shocks that occur in the previous quarter tend to persist until the current quarter. Note, however, that the sample ends around the financial crisis of 2008, which might lead to some inconsistency over the results, since we observe a longer period of sequential decline in the economic activity by the end of the sample, i.e., it seems that the persistency of the shocks in the AR model changes its behavior around 2008. A possibility would be re-estimating the model considering maybe the first half of the sample and another estimation considering only the second half of the sample or includind a dummy variable for the period pre/post crisis (which might not be ideal given the frequency of the data and low availability) or estimate a dynamic model with time-varying coefficients (i.e., include a stochastic variation in either the coefficients or the volatility).
+**Comments on the results:** Keeping only the first lag in the model is in line with the results from the ACF/PACF. Also, a relationship between previous and current periods in economic series was reported in @nelson1982 for the US Economy. The coefficient suggests a positive effect of `r AR1coef$Estimate[1]` (se = `r AR1coefsderror`; p-value= `r AR1coefpvalue`) of GDP growth in previous quarter on the growth of current quarter. Thus, shocks that occur in the previous quarter tend to persist until the current quarter. Note, however, that the sample ends around the financial crisis of 2008, which might lead to some inconsistency over the results, since we observe a longer period of sequential decline in the economic activity by the end of the sample, i.e., it seems that the persistency of the shocks in the AR model changes its behavior around 2008. A possibility would be re-estimating the model considering maybe the first half of the sample and another estimation considering only the second half of the sample or includind a dummy variable for the period pre/post crisis (which might not be ideal given the frequency of the data and low availability) or estimate a dynamic model with time-varying coefficients (i.e., include a stochastic variation in either the coefficients or the volatility).
 
 ## Question 3
 
 _Check the regression residuals of the estimated AR(p) model for autocorrelation by plotting the estimated residual ACF function. Does the model seem well specified?_
 
-```{r, message = FALSE, warning = FALSE} 
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
   mRes1 <- mAR1$residuals
+
+  sigma_Res1 <- sqrt(mAR1$sigma2)
   
-  p1 <- gghistogram01(tsData01, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR(1) model", ylabel = "")
-  p2 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 12, type = "correlation"), title = "Residuals from the AR(1) model")
+  p1 <- gghistogram01(tsData01, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from 
+                      the AR(1) model", ylabel = "")
+  p2 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 12, type = 
+                                  "correlation"), title = "Residuals from the AR(1) model")
   
   dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(88, 0, 1))
   p3 <- ggqqplot(dfRes, x = "Quantis",
@@ -663,15 +648,15 @@ _Check the regression residuals of the estimated AR(p) model for autocorrelation
   grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
   
   JBtest <- jarque.bera.test(mRes1)
-  KStest <- ks.test(mRes1, pnorm)
+  KStest <- ks.test(mRes1, pnorm, 0, sigma_Res1)
 ```
 
 *Comments on the results:* The ACF graph show that all lags are whithin the 5% confidence interval, as we expected. As sanity check, we ran both a KS and a Jarque-Bera test for normality to check the residuals. The hypothesis of both tests are:
 
-*    *H0 :* The data comes from a standard normal distribution.
-*    *H1 :* The data does not comes from a standard normal distribution.
+*    *H0 :* The data comes from a normal distribution.
+*    *H1 :* The data does not comes from a normal distribution.
 
-Since the p-value for the KS test is higher than $5%$ (KS statistic = `r round(KStest$statistic,4)`; p-value = `r round(KStest$p.value,4)`), we cannot reject the hypothesis of normality of the residuals, consistent with the QQ plot, where all sample points are inside the confidence bands. 
+Since the p-value for the KS test is higher than $5\%$ (KS statistic = `r round(KStest$statistic,4)`; p-value = `r round(KStest$p.value,4)`), we cannot reject the hypothesis of normality of the residuals, consistent with the QQ plot, where all sample points are inside the confidence bands. 
 
 However, when looking at the histogram of the residuals the series exhibits behavior compatible to the presence of heavy tails. The Jarque Bera test rejects the null hypothesis of normality (JB statistic = `r round(JBtest$statistic,4)`; p-value $\approx$ `r round(JBtest$p.value,6)`). We opted by not follow the trail of the non-normality of the residuals because the JB test tends to be overly conservative for small sample sizes (even with a sample size of 88, which is our case). 
 
@@ -683,16 +668,11 @@ _Make use of your estimated AR model to produce a 2-year (8 quarters) forecast f
 
 This is a more general procedure than the one studied in our classes, but given the fact that we only studied methods assuming that the true GDP is known (i.e., we only incorporated the uncertainty regarding the error term, not the uncertainty regarding the correct specification of the model neither the uncertainty about the parameter's estimates), using the functions of the package seemed the correct modeling choice.
 
-**Aisha**: Esse foi o máximo que deu para escrever, porque é tão geral o método que acaba sendo difícil entrar em todos os detalhes. Se quiser dar uma olhada nos links que consultei, eles estão aqui:
-https://www.rdocumentation.org/packages/forecast/versions/8.11/source
-https://www.jstatsoft.org/article/view/v027i03
-https://cran.r-project.org/web/packages/forecast/vignettes/JSS2008.pdf
-
-
 ```{r}
 h = 8
 AR1forecast  <- forecast(mAR1, h, level = 95)
-vdNewDate    <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", "2011Q1")
+vdNewDate    <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", 
+                  "2011Q1")
 AR1forecast  <- cbind(vdNewDate, data.frame(AR1forecast))
 
 colnames(AR1forecast) <- c("Date", "Forecast", "L95", "H95")
@@ -701,10 +681,9 @@ AR1forecast %>%
   kable("latex") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"))
 
-autoplot(forecast(mAR1, h, level = 95), main = "12 step ahead forecast using the AR(1) model", xlab = "Quarter", ylab = "Dutch GDP q. growth")
+autoplot(forecast(mAR1, h, level = 95), main = "12 step ahead forecast using the AR(1) 
+         model", xlab = "Quarter", ylab = "Dutch GDP q. growth")
 ```
-
-*Aisha:* Esse gráfico fiz usando uma função automática. Vou deixar assim por enquanto (é melhor que nada) e se der tempo no final a gente faz melhor.
 
 ## Question 5
 
@@ -716,7 +695,7 @@ In fact, our point estimate is not significanly different from zero: the corresp
 
 ## Question 6
 
-_Do you find the assumption of iid Gaussian innovations reasonable? How does this affect your answer to the previous question_?_
+_Do you find the assumption of iid Gaussian innovations reasonable? How does this affect your answer to the previous question?_
 
 *Comment*: Given the ACF behaviour and the KS-test performed in the previous items, it seems reasonable to accept the hypothesis of iid Gaussian innovations. However, if this is not true (and could be false, for example, under the presence of heavy tails), the confidence intervals for our predictions would be higher and the uncertainty around the estimate would increase.
 
@@ -724,9 +703,7 @@ _Do you find the assumption of iid Gaussian innovations reasonable? How does thi
 
 _Suppose that 2 years have passed since you delivered your forecasts to the government, in the first quarter of 2009. Compare your point forecasts and confidence bounds with the following actual observed values for the 12 quarters from 2009q1 to 2011q1. Please comment on the accuracy of your forecasts._
 
-### Appending new data into old data
-
-```{r, message = FALSE, warning = FALSE}
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
  vdNewDate <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", "2011Q1")
  vdNewGDP  <- c(-1.63, 0.28, 0.33, 0.66, 1.59, 0.51, 0.71, 0.81)
  dfNewData <- data.frame(vdNewDate, vdNewGDP)
@@ -752,16 +729,13 @@ _Suppose that 2 years have passed since you delivered your forecasts to the gove
   ggplot(dfData02, aes(as.yearqtr(obs), GDP_QGR)) +
     geom_line(color = "dark blue") +
     geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=Forecast)) +
-    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95, ymax=H95), alpha=0.3) +
+    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95, ymax=H95), alpha=0.3) + 
     theme_bw() +
-    labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", y="GDP growth")
-  
-  
+    labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", 
+         y="GDP growth")
 ```
 
-**Comments:** The point forecasts, with exception of 2009 Q2 and 2010 Q2, are above the true realizations. However, the realizations are within the 95% confidence bands, which shows that there is no significant evidence of the forecasts and the true realizations being different. Even though, this result must be taken with cautious, because as mentioned before, the confidence intervals for the predictions are quite large and range from positive to negative values.
-
-_COMENTÁRIO_ (Aisha) Coloquei o gráfico e tentei fazer uma análise, mas não sei muito mais o que escrever aqui.
+**Comments:** The point forecasts, with exception of 2009 Q2 and 2010 Q2, are above the true realizations. However, the realizations are within the 95% confidence bands, which shows that there is no significant evidence of the forecasts and the true realizations being different. However, this result must be taken with cautious, because as mentioned before, the confidence intervals for the predictions are quite large and range from positive to negative values. Also, if the iid Gaussian assumption for the innovations does not hold, the intervals my lead us to a worng conclusiong about the forecast results credibility.
 
 ## Question 8
 
@@ -789,7 +763,12 @@ Overall, by using a larger significance level in the model we allow the existenc
 ```{r, message = FALSE, warning = FALSE}
 h = 8
 AR3forecast  <- forecast(mAR3, h, level = 95)
-vdNewDate    <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", "2011Q1")
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+vdNewDate    <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", 
+                  "2011Q1")
 AR3forecast  <- cbind(vdNewDate, data.frame(AR3forecast))
 
 colnames(AR3forecast) <- c("Date", "Forecast", "L95", "H95")
@@ -798,13 +777,15 @@ AR3forecast %>%
   kable("latex") %>% 
   kable_styling(bootstrap_options = c("striped", "hover"))
 
-autoplot(forecast(mAR3, h, level = 95), main = "12 step ahead forecast using the AR(3) model", xlab = "Quarter", ylab = "Dutch GDP q. growth")
+autoplot(forecast(mAR3, h, level = 95), main = "12 step ahead forecast using the AR(3) 
+         model", xlab = "Quarter", ylab = "Dutch GDP q. growth")
 
 # Merging the data with the new forecast
  
  colnames(dfCompare) <-  c("obs", "GDP_QGR", "ForecastAR1", "L95AR1", "H95AR1")
  dfCompare <- cbind(dfCompare, AR3forecast[,c(2,3,4)])
- colnames(dfCompare) <-  c("obs", "GDP_QGR", "ForecastAR1", "L95AR1", "H95AR1", "ForecastAR3", "L95AR3", "H95AR3")
+ colnames(dfCompare) <-  c("obs", "GDP_QGR", "ForecastAR1", "L95AR1", "H95AR1", 
+                           "ForecastAR3", "L95AR3", "H95AR3")
  
   dfCompare %>% 
   kable("latex") %>% 
@@ -813,12 +794,17 @@ autoplot(forecast(mAR3, h, level = 95), main = "12 step ahead forecast using the
   # Doing the graph
   ggplot(dfData02, aes(as.yearqtr(obs), GDP_QGR)) +
     geom_line(color = "dark blue") +
-    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=ForecastAR1, color = "AR1"), color = "coral") +
-    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95AR1, ymax=H95AR1, color = "AR1"), alpha=0.3, fill = "coral") +
-    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=ForecastAR3, color = "AR3"), color = "skyblue4") +
-    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95AR3, ymax=H95AR3, color = "AR3"), alpha=0.3, fill = "skyblue") +
+    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=ForecastAR1, color = "AR1")
+               , color = "coral") +
+    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95AR1, ymax=H95AR1, 
+                                     color = "AR1"), alpha=0.3, fill = "coral") +
+    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=ForecastAR3, color = "AR3"), 
+               color = "skyblue4") +
+    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95AR3, ymax=H95AR3, 
+                                     color = "AR3"), alpha=0.3, fill = "skyblue") +
     theme_bw() +
-    labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", y="GDP growth", color = "Model")
+    labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", 
+         y="GDP growth", color = "Model")
 ```
 
 *Comments on the forecast results:* As mentioned before, by allowing for further lags, we incorporate a medium run aspect to the model, in addition to the short run component (first lag). As a result, the forecasted points are able to better behave in an ascending trajectory, instead acommodating in a certain average level as the forecasts with the AR1 model. That is, the GDP quartely growth shows a more gradual recovery from the 2008 crisis, which resembles more the observed data from the second quarter of 2009 onwards. In terms of the size of confidence intervals there were no visible changes, as can be seen in the graph.

@@ -1,16 +1,13 @@
 ---
 title: "Econometrics III HW - part 2"
 author: "A. Schmidt and P. Assunção"
-date: "10-3-2020"
+date: "March, 2020"
 output:
   pdf_document: default
   html_document:
     df_print: paged
 ---
 
-# Loading packages and helper functions
-
-See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
 # Verify if a package is already installed, if not, download and install before loading. 
@@ -77,7 +74,7 @@ gghistogram01 <- function(x, add.normal=FALSE, add.kde=FALSE, add.rug=TRUE, bins
 }
 ```
 
-```{r, message = FALSE, warning = FALSE, echo = FALSE}
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
 # ACF plot function adapted from the `forecast` package
 autoplot.acf01 <- function(object, ci=0.95, title = "Dutch quaterly GDP growth", ...) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
@@ -430,6 +427,8 @@ ggtsbreaks <- function(x) {
 
 # Assignment 2
 
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment). Click [here](https://raw.githubusercontent.com/aishameriane/Mphil/master/EconIII/HW2.Rmd?token=AAVGJTU7E2PQJX7KXCDU4IK6RLZIA) to access the code.
+
 ## Introduction
 
 _By the beginning of 2014, in the face of fast rising unemployment, the Dutch Ministry of Social Affairs is concerned that the provisions for future government expenditure with social pensions may be severely under-estimated. This is particularly true if the economy is hit again by a large negative shock. Suppose that you have been asked to analyze alternative unemployment scenarios._
@@ -551,7 +550,7 @@ p0
 
 As for the unemployment rate, we observe some sort of cycical behaviour that seems to last for (roughly) 5 years. One exception to this behaviour is around the financial crisis period. Although unemployment was indeed smaller in 2010 than in 2005, one would expect that the continuous drop from 2005 until 2010. That is, that the favorable cenario for umemployment rate, where the economoy is experiencing diminishing unemployment, would last for at least a couple more years. Instead, we observe that such drop occurs up to 2008, where the unemployment trend is reversed and the economy faces more unemployment as the crisis goes on. After the crises, we observe a mostly increasing unemployment trend until the end of the data sample, with a short drop after 2010.
 
-The gray areas in the graph represents the recessions in the Euro Area for the period (source: [Euro Area Business Cycle Network](https://eabcn.org/dc/chronology-euro-area-business-cycles). Notice that indeed the Dutch GDP growth rate was in decline during the last two periods flagges as recessions, but it was not case for the first one (from 1992Q1 to 1993Q3), but this is not an error: Netherlands only adopted the Euro in 1999.
+The gray areas in the graph represents the recessions in the Euro Area for the period (link for the source: [Euro Area Business Cycle Network: https://eabcn.org/dc/chronology-euro-area-business-cycles](https://eabcn.org/dc/chronology-euro-area-business-cycles)). Notice that indeed the Dutch GDP growth rate was in decline during the last two periods flagges as recessions, but it was not case for the first one (from 1992Q1 to 1993Q3), but this is not an error: Netherlands only adopted the Euro in 1999.
 
 *PALOMA:* nao sei mais o que adicionar aqui, ja que nem é solicitado explicitamente uma análise desses gráficos. *AISHA* Acho que está bom. Eu fiz um gráfico onde as duas séries ficam juntas e adicionei as recessões com uma explicação no final.
 
@@ -576,7 +575,7 @@ To avoid too many code in the document, only the final model code is appearing b
 
 ### AR(p) model for GDP - AR(3)
 
-#### With all lags
+ With all lags
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE} 
   
@@ -592,7 +591,7 @@ To avoid too many code in the document, only the final model code is appearing b
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-#### Removing the second lag
+ Removing the second lag
 
 ```{r, message = FALSE, warning = FALSE, echo = TRUE} 
   mAR3              <- Arima(tsData21[,1], order = c(3,0,0), fixed = c(NA,0,NA, NA))
@@ -614,7 +613,7 @@ $$\text{with} \quad \{\epsilon_t\}\sim WN(0,\sigma_{\epsilon}^2).$$
 
 According to this model, we have a persistence of the past GDP growth levels on the current growth. Also, since the coefficients are positive, we observe a "positive persistence". That is, past GDP growth tends to influence growth today in the same direction: growth would be related to some more growth in the future, and decline would be related with more future decline. Such persistence would last for about three quarters. 
 
-This lag persistence is consistent with the definition from the Euro Area Business Cycle Dating Committee (EABCDC) for a recession. Accordingly to the EABCDC, a recession is characterized as _"a significant decline in the level of economic activity, spread across the economy of the euro area, usually visible in **two or more** consecutive quarters of negative growth in GDP, employment and other measures of aggregate economic activity for the euro area as a whole.”_ ([source](https://eabcn.org/dc/methodology)).
+This lag persistence is consistent with the definition from the Euro Area Business Cycle Dating Committee (EABCDC) for a recession. Accordingly to the EABCDC, a recession is characterized as _"a significant decline in the level of economic activity, spread across the economy of the euro area, usually visible in **two or more** consecutive quarters of negative growth in GDP, employment and other measures of aggregate economic activity for the euro area as a whole.”_ ([link for the source: https://eabcn.org/dc/methodology](https://eabcn.org/dc/methodology)).
 
 ### ADL(p,q) model for unemployment (GDP growth as exogenous regressor) - ADL(4,4)
 
@@ -758,7 +757,7 @@ As before, to avoid too many code in the document, only the final model code is 
 
 ### ADL(3,1) with coefficient zero for current GDP and second lag of unemployment
 
-```{r, message = FALSE, warning = FALSE} 
+```{r, message = FALSE, warning = FALSE}  
   mADL31_0 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) +L(ts(tsData21[,2]),3) 
                     + L(ts(tsData21[,1])))
   
@@ -786,7 +785,7 @@ As for the coefficients of unemployment lags, they show a positive effect of the
 
 _Use the estimated ADL model to calculate and interpret the short-run multiplier, the 2-step-ahead multiplier, and the long-run multiplier. Finally, report and interpret the long-run relation between the unemployment rate and the GDP growth rate._
 
-The final model will be given by:
+Let the unemployment rate be $u_t$, the gdp quartely growth be $gdp_t$. The final model will be given by:
 $$u_t = \alpha + \phi_1 u_{t-1} + \phi_2 u_{t-3} + \beta gdp_{t-1} + \varepsilon_t$$
 $$\{\varepsilon_t\}\sim WN(0,\sigma_{\varepsilon}^2)$$
 
@@ -795,14 +794,14 @@ $$u_t = 0.21 + 1.40 u_{t-1} -0.43 u_{t-3} -0.03 gdp_{t-1} + \varepsilon_t$$
 $$\{\varepsilon_t\}\sim WN(0,\sigma_{\varepsilon}^2)$$
 
 The short-run multiplier tells us how the current value of the exogenous variable (quarterly GDP growth in our case) explains the endogenous variable (quarterly unemployment). Since we do not have $gdp_t$ as an exogenous regressor in the final model, the short-run multiplier will be zero (percentual increases over GDP lead to no changes in current unemployment. The derivation is as follows:
-$$u^*{t} =  \alpha + \phi_1 u{t-1} + \phi_2 u_{t-3} + \beta gdp_{t-1} + \varepsilon_{t} = u_t$$
+$$u^*_{t} =  \alpha + \phi_1 u_{t-1} + \phi_2 u_{t-3} + \beta gdp_{t-1} + \varepsilon_{t} = u_t$$
 
 The 2-step-ahead multiplier will give us the impact on unemployment two-step ahead of a one unit temporary increase in current GDP growth. This multiplier will be equal to $\phi_1 \beta = 1.4 \cdot (-0.03) = -0.042$. That is, a percentage increase in GDP is expected to result in a fall of 0.042% in unemployment. The derivation is as follows:
 $$\begin{aligned}
-    u^{t+1} &= \alpha + \phi_1 u{t}^ + \phi_2 u_{t-2} + \beta (gdp_{t}+1) + \varepsilon_{t+1} \\
+    u^*_{t+1} &= \alpha + \phi_1 u_{t} + \phi_2 u_{t-2} + \beta (gdp_{t}+1) + \varepsilon_{t+1} \\
      &=  \alpha + \phi_1 u_{t} + \phi_2 u_{t-2} + \beta gdp_{t} + \beta + \varepsilon_{t+1} \\
      &= u_{t+1} + \beta \\
-    u^{t+2} &=  \alpha + \phi_1 u{t+1}^ + \phi_2 u_{t-1} + \beta gdp_{t+1} + \varepsilon_{t+2} \\
+    u^*_{t+2} &=  \alpha + \phi_1 u_{t+1} + \phi_2 u_{t-1} + \beta gdp_{t+1} + \varepsilon_{t+2} \\
      &=  \alpha + \phi_1 (u_{t+1} + \beta) + \phi_2 u_{t-1} + \beta gdp_{t+1} + \varepsilon_{t+2} \\
      &= u_{t+2} + \phi_1 \beta
 \end{aligned}$$
@@ -833,16 +832,20 @@ _Suppose that the innovations are iid Gaussian. What is the probability of the u
   
   sigma_Res1 <- summary(mADL31_0)$sigma
 
-  p1 <- hist(mRes1, density=20, breaks=20, prob=TRUE, xlab = "Model residuals", 
-             ylim=c(0,5), main = "Residuals of ADL(3,1)")
-  curve(dnorm(x, mean=mean(mRes1), sd=sigma_Res1), 
-      col="darkblue", lwd=2, add=TRUE, yaxt="n")
+  p1 <- gghistogram01(mRes1, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR(1) model", ylabel = "")
+  p2 <- autoplot.acf01(ggPacf01(mRes1, plot = FALSE, lag.max = 12, type = "correlation"), title = "Residuals from the ADL model")
+  
+  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(105, 0, sigma_Res1))
+  p3 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+  grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
   
   # Kolmogorov-Smirnov test
   KStest <- ks.test(mRes1, pnorm, 0, sigma_Res1)
 ```
 
-To compute these probabilities, we first find the one step ahead estimator for $UN\_RATE$. Let the unemployment rate be $u_t$, the gdp quartely growth be $gdp_t$ and the one step ahead forecast be $\hat{u}_{T+1}$. Since we are assuming $\{\varepsilon_t\} \sim iid(0,\sigma_{\varepsilon}^2)$, we have that:
+To compute these probabilities, we first find the one step ahead estimator for $UN\_RATE$. Again, let the unemployment rate be $u_t$, the gdp quartely growth be $gdp_t$ and the one step ahead forecast be $\hat{u}_{T+1}$. Since we are assuming $\{\varepsilon_t\} \sim iid(0,\sigma_{\varepsilon}^2)$, we have that:
 
 $$\begin{aligned}
     \hat{u}_{T+1} &= E[u_{T+1}|D_T = (u_1, \dots , u_T, gdp_1, \dots, gdp_T)] \\
@@ -855,7 +858,7 @@ The last step follows from the innovations being iid Gaussian distributed.
 
 The forecast error term will be given by
 $$e_{T+1} = u_{t+1} - \hat{u}_{T+1} = \varepsilon_{T+1}.$$
-Therefore, we have that $e_T \sim iid(0,\sigma_{\varepsilon}^2)$.
+Therefore, we have that $e_T \sim NID(0,\sigma_{\varepsilon}^2)$.
 
 From this result, it follows that the probability that unemployment in the second quarter of 2014 will be
 
@@ -877,7 +880,7 @@ $$\begin{aligned}
 \end{aligned}$$
 and the probability that unemployment will be smaller than 7.8% is $1-0.8264 = 17.36\%$.
 
-As for the last question, we look at the histogram and the p-value of Kolmogorov-Smirnov test. The null hypothesis of such test is that the data comes from a normal distribution, with mean $0$ and standard deviation `r round(sigma_Res1)` (as remark, the mean of the residuals is virtually zero, as we would expect). Since the p-value for the KS test is higher than $5%$ (KS statistic = `r round(KStest$statistic,4)`; p-value = `r round(KStest$p.value,4)`), we have evidence to not reject the null hypothesis. That is, we have evidence that the assumption of iid Gaussian distrubution for the innovations does seem reasonable. From the histogram of the residuals, we see that their distribution indeed seems to be bell shaped, but with somewhat heavy tails, speccialy on the left of the mean, but this was not significant in terms of the test.
+As for the last question, we look at the histogram and the p-value of Kolmogorov-Smirnov test. The null hypothesis of such test is that the data comes from a normal distribution, with mean $0$ and standard deviation `r round(sigma_Res1)` (as remark, the mean of the residuals is virtually zero, as we would expect). Since the p-value for the KS test is higher than $5%$ (KS statistic = `r round(KStest$statistic,4)`; p-value = `r round(KStest$p.value,4)`), we have evidence to not reject the null hypothesis. That is, we have evidence that the assumption of iid Gaussian distrubution for the innovations does seem reasonable. From the histogram of the residuals, we see that their distribution indeed seems to be bell shaped, but with somewhat heavy tails, speccialy on the left of the mean, but this was not significant in terms of the test and also doesn't show in the qqplot.
 
 ## Question 5
 _Make use of your estimated AR and ADL models to produce a 2-year (8 quarter) forecast for the Unemployment rate that spans until the first quarter of 2016. Report the obtained values._
@@ -929,7 +932,8 @@ ADL22_forecast   <- tsData22
 
 for (i in indexts:nrow(tsData22)){
   ADL22_forecast[i,2] <- coef(mADL31_0) %*% c(1, ADL22_forecast[(i-1), 2], 
-                                              ADL22_forecast[(i-3), 2], ADL22_forecast[(i-1), 1])
+                                              ADL22_forecast[(i-3), 2], 
+                                              ADL22_forecast[(i-1), 1])
 }
 ```
 
@@ -955,5 +959,185 @@ _(b) In the `bad scenario' the GDP quarterly growth rate suffers a negative shoc
 
 _Please use the last observed value of the unemployment rate and gdp growth rate as the origin of your IRFs. In particular, set the origin to -0.37% for GDP and 7.8% for the unemployment rate._
 
+We start by computing the IRF for the AR(3) model. In general terms, when we have the following model
 
+$$X_t = \alpha + \phi_1 X_{t-1} + \phi_2 X_{t-2} + \phi_3 X_{t-3} + \varepsilon_t, \text{ with } \varepsilon_t \sim \text{i.i.d.}(0, \sigma^2),$$
+to evaluate the IRF, we are interested in determine the above system:
+
+$$\begin{aligned}
+  \tilde{x}_t &= x, \quad t < s \\
+  \tilde{x}_t &= x + \epsilon, \quad t = s \\
+  \tilde{x}_t &= x + \frac{\partial X_t}{\partial \varepsilon_s}\epsilon, \quad \forall t > s \\
+\end{aligned}$$
+Therefore, are interested in knowing  $\frac{\partial X_t}{\partial \varepsilon_s}$. 
+
+We know that for an AR(3) model, we have the following:
+
+$$\begin{aligned}
+ \frac{\partial X_{s+1}}{\partial \varepsilon_s} &= \phi_1 \frac{\partial X_{s}}{\partial \varepsilon_s} \\
+ \frac{\partial X_{s+2}}{\partial \varepsilon_s} &= \phi_1 \frac{\partial X_{s+1}}{\partial \varepsilon_s} + \phi_2 \frac{\partial X_{s}}{\partial \varepsilon_s} = (\phi_1^2+\phi_2)\frac{\partial X_{s}}{\partial \varepsilon_s} \\
+ \frac{\partial X_{s+3}}{\partial \varepsilon_s} &= \phi_1 \frac{\partial X_{s+2}}{\partial \varepsilon_s} + \phi_2 \frac{\partial X_{s+1}}{\partial \varepsilon_s} + \phi_3 \frac{\partial X_{s}}{\partial \varepsilon_s} = (\phi_1^3+2\phi_1\phi_2+\phi_3)\frac{\partial X_{s}}{\partial \varepsilon_s}\\
+\frac{\partial X_{s+4}}{\partial \varepsilon_s} &= \phi_1 \frac{\partial X_{s+3}}{\partial \varepsilon_s} + \phi_2 \frac{\partial X_{s+2}}{\partial \varepsilon_s} + \phi_3 \frac{\partial X_{s+1}}{\partial \varepsilon_s} = (\phi_1^4+\phi_2^2+ 3\phi_1^2\phi_2+2\phi_1\phi_3)\frac{\partial X_{s}}{\partial \varepsilon_s} \\
+\frac{\partial X_{s+5}}{\partial \varepsilon_s} &= \phi_1 \frac{\partial X_{s+4}}{\partial \varepsilon_s} + \phi_2 \frac{\partial X_{s+3}}{\partial \varepsilon_s} + \phi_3 \frac{\partial X_{s+2}}{\partial \varepsilon_s}, \\
+\text{etc}
+\end{aligned}$$
+
+To implement this, we only need to compute separately the first three components. From there, we can use a recursion to obtain a vector with $\frac{\partial X_{s+i}}{\partial \varepsilon_s}, \ \forall\ i > 3$. 
+
+Now that we have a recursion for the AR part, we need to write the recursion for the ADL part. Using a general structure for an arbitrary ADL(3,1)-AR(3) system given by
+
+$$Y_t = \gamma + \psi_1 Y_{t-1} + \psi_2 Y_{t-2} + \psi_3 Y_{t-3} + \beta X_{t-1} + \varepsilon_t,$$
+$$X_t = \alpha + \phi_1 X_{t-1} + \phi_2 X_{t-2} + \phi_3 X_{t-3} + v_t$$
+we have the same equations above for the IRF of the x (which represents the AR(3) part) plus the following:
+
+$$\begin{aligned}
+  \tilde{y}_{s-1} &= y, \\
+  \tilde{y}_s &= y + 0, \\
+  \tilde{y}_{s+1} &= y + \beta \frac{\partial X_{s}}{\partial v_s} \epsilon \\
+  \tilde{y}_{s+2} &= y + \psi_1 \frac{\partial Y_{s+1}}{\partial v_s} \epsilon +\beta \frac{\partial X_{s+1}}{\partial v_s}\epsilon \\
+  \tilde{y}_{s+3} &= y + \psi_1 \frac{\partial Y_{s+2}}{\partial v_s} \epsilon + \psi_2 \frac{\partial Y_{s+1}}{\partial v_s} \epsilon +\beta \frac{\partial X_{s+2}}{\partial v_s} \epsilon\\
+  \tilde{y}_{s+j} &= y + \psi_1 \frac{\partial Y_{s+j-1}}{\partial v_s} \epsilon + \psi_2 \frac{\partial Y_{s+j-2}}{\partial v_s} \epsilon + \psi_3 \frac{\partial Y_{s+j-3}}{\partial v_s} \epsilon +\beta \frac{\partial X_{s+j-1}}{\partial v_s} \epsilon,\ j > 3
+\end{aligned}$$
+
+Given this, we can write a function that will do the recursions:
+
+```{r}
+# The function below computes the IRF for an ADL(3,1)-AR(3) system
+fIRFADL31 <- function(param, shock = 0.02*100, h = 20, 
+                      lastgdp = -0.0037*100, lastun = 0.078*100){
+  
+  # To avoid errors
+  if (length(param) != 7){
+    param <- rep(0,7)
+  }
+  
+  # To look pretty (because the first value is at the moment of the shock)
+  h <- h -1 
+  
+  # Extract parameters
+  phi1 <- param[1]
+  phi2 <- param[2]
+  phi3 <- param[3]
+  
+  psi1 <- param[4]
+  psi2 <- param[5]
+  psi3 <- param[6]
+  
+  beta <- param[7]
+  
+  # Create empty vectors
+  derivativesx <- c(shock, rep(NA, h))
+  derivativesy <- c(shock, rep(NA, h))
+  
+  # Make the recursion
+  for (i in 1:h){
+    if (i == 1){
+      derivativesx[i+1] <- phi1 * shock
+      derivativesy[i+1] <- 0
+    } else if (i == 2) {
+      derivativesx[i+1] <- phi1 * derivativesx[i] + phi2 * shock
+      #derivativesy[i+1] <- psi1 * derivativesy[i] * shock + beta * derivativesx[i] * shock
+      derivativesy[i+1] <- psi1 * derivativesy[i] + beta * derivativesx[i]
+    } else if (i == 3){
+      derivativesx[i+1] <- phi1 * derivativesx[i] + phi2 * derivativesx[i-1] + phi3 * shock
+      #derivativesy[i+1] <- psi1 * derivativesy[i] * shock + psi2 * derivativesy[i-1] * shock 
+      #+ beta * derivativesx[i] * shock
+      derivativesy[i+1] <- psi1 * derivativesy[i] + psi2 * derivativesy[i-1] + beta * derivativesx[i]
+    } else if (i > 3) {
+      derivativesx[i+1] <- phi1 * derivativesx[i] + phi2 * derivativesx[i-1] + phi3 * derivativesx[i-2]
+      #derivativesy[i+1] <- psi1 * derivativesy[i] * shock + psi2 * derivativesy[i-1] * shock + 
+      #psi3 * derivativesy[i-2] * shock + beta * derivativesx[i] * shock
+      derivativesy[i+1] <- psi1 * derivativesy[i] + psi2 * derivativesy[i-1] + psi3 * derivativesy[i-2] + beta * derivativesx[i]
+    }
+  }
+  
+  irfx <- lastgdp + derivativesx
+  irfy <- lastun + derivativesy
+  
+  dfIRF <- data.frame(1:(h+1), irfx, irfy)
+  names(dfIRF) <- c("Lag", "GDP_QGR", "UN_RATE")
+  
+  return(dfIRF)
+}
+
+```
+
+And we can compute the IRF to plot the graphs.
+
+```{r}
+# Get the coefficients
+phi1  <- coef(mAR3)[1]
+phi2  <- coef(mAR3)[2]
+phi3  <- coef(mAR3)[3]
+psi1  <- coef(mADL31_0)[2]
+psi2  <- 0
+psi3  <- coef(mADL31_0)[3]
+beta  <- coef(mADL31_0)[4]
+
+# Create a vector with parameters
+parameters <- c(phi1, phi2, phi3, psi1, psi2, psi3, beta)
+janela = 100
+
+# If you want, may also create variables for shock, last observation, etc.
+dfIRF1 <- fIRFADL31(parameters, shock = 0.02*100, h = janela, 
+                    lastgdp = -0.0037*100, lastun = 0.078*100)
+dfIRF2 <- fIRFADL31(parameters, shock = -0.02*100, h = janela, 
+                    lastgdp = -0.0037*100, lastun = 0.078*100)
+```
+
+```{r, message = FALSE, echo = FALSE, warning = FALSE}
+# Assemble stuff together for the graphs
+dfIRF1 <- data.frame(rep(1, nrow(dfIRF1)), dfIRF1)
+names(dfIRF1) <- c("Scenario", "Lag", "GDP_QGR", "UN_RATE")
+dfIRF2 <- data.frame(rep(2, nrow(dfIRF2)), dfIRF2)
+names(dfIRF2) <- c("Scenario", "Lag", "GDP_QGR", "UN_RATE")
+dfIRF3 <- rbind(dfIRF1, dfIRF2)
+
+dfIRF <- melt(dfIRF3, id.vars = c("Scenario", "Lag"))
+
+
+# Now we are ready to plot some graphs
+## GDP First
+p0 <- ggplot(dfIRF[which(dfIRF$variable =='GDP_QGR'),], 
+             aes(x = Lag, y = value, color = as.factor(Scenario))) +
+             geom_line(alpha = 1)+
+             labs(title="IRF for GDP", y = "GDP Quartertly Growth", 
+                  x= "Quarters after shock", color = "Shock") +
+        scale_y_continuous(breaks = seq(min(dfIRF[which(dfIRF$variable =='GDP_QGR'),4])-0.5,max(dfIRF[which(dfIRF$variable =='GDP_QGR'),4])+0.5, 0.5), limits = c(min(dfIRF[which(dfIRF$variable =='GDP_QGR'),4])-0.5,max(dfIRF[which(dfIRF$variable =='GDP_QGR'),4])+0.5), minor_breaks = seq(min(dfIRF[which(dfIRF$variable =='GDP_QGR'),4])-0.5,max(dfIRF[which(dfIRF$variable =='GDP_QGR'),4])+0.5, 0.25)) +
+        scale_colour_brewer(palette = "Set1", name = "Type of shock", labels = c("+ 2%", "- 2%")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), 
+              axis.text.y = element_text(size = 6),
+              legend.position = "bottom",
+              axis.title.x = element_text(size = 8), 
+              axis.title.y = element_text(size = 8), 
+              plot.title = element_text(size=10),
+              legend.text = element_text(size = 6),
+              legend.title = element_text(size = 7))
+
+# Then unemployment
+p1 <- ggplot(dfIRF[which(dfIRF$variable =='UN_RATE'),], 
+             aes(x = Lag, y = value, color = as.factor(Scenario))) +
+             geom_line(alpha = 1)+
+             labs(title="IRF for Unemployment", y = "Unemp. rate", 
+                  x= "Quarters after shock", color = "Shock") +
+              #scale_y_continuous(breaks = seq(0,max(dfIRF[which(dfIRF$variable =='UN_RATE'),4])-0.5, 0.5), 
+              #                   limits = c(min(dfIRF[which(dfIRF$variable =='UN_RATE'),4])-0.5,max(dfIRF[which(dfIRF$variable =='UN_RATE'),4])+0.5), 
+              #                   minor_breaks = seq(0,max(dfIRF[which(dfIRF$variable =='UN_RATE'),4])+0.5, 0.25)) +
+              scale_colour_brewer(palette = "Set1", name = "Type of shock", labels = c("+ 2%", "- 2%")) +
+              theme_bw() +
+              theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), 
+              axis.text.y = element_text(size = 6),
+              legend.position = "none",
+              axis.title.x = element_text(size = 8), 
+              axis.title.y = element_text(size = 8), 
+              plot.title = element_text(size=10),
+              legend.text = element_text(size = 6),
+              legend.title = element_text(size = 7))
+        
+grid.arrange(p0, p1, nrow = 2)
+#p0
+#p1
+
+```
 

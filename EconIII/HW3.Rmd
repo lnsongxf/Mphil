@@ -482,6 +482,8 @@ dfData01 <- read.csv2(url, sep = ",", dec = ".", header = TRUE)
 
 Check if everything is ok with the dataset: header and tail and summary statistics to check for missing data/outliers. We can see from the head and tail that the Data set indeed goes until the second quarter of 2009 and at least those observations seems to be completely filled with adequate ranges.
 
+*PALOMA:* dados vão até segundo tri de 2009? achei que ia ate janeiro de 2013. E a tabela que gera, deveria ter numeros no cabeçalho?
+
 ```{r,echo = FALSE}
 cbind(t(head(dfData01, 3)), t(tail(dfData01, 3))) %>% 
   kable("latex") %>% 
@@ -565,11 +567,11 @@ p4 <- autoplot.acf01(ggPacf01(tsData02, plot = FALSE, lag.max = 10,
 grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
 ```
 
-**Comments on the graphs:** Both stocks seems to move closely (top graph), which is not surprising given that they are in the same sector. However, Microsoft' series exhibits a higher level (average) than Intel's, which can be observed by the gap between the to series. In general the cap seems constant, with exceptions in te beginning of 2009 and the end of 2011, where they were close. Also in the second semester of 2007 we notice that both series were in an ascending escalade, but Microsoft value went higher and the gap was also wider. 
+**Comments on the graphs:** Both stocks seems to move closely (top graph), which is not surprising given that they are in the same sector. However, Microsoft' series exhibits a higher level (average) than Intel's, which can be observed by the gap between the two series. In general, the gap seems constant, with exceptions in te beginning of 2009 and the end of 2011, where they it is smaller (series are close to each other). Also, we notice some periods when the gap is wider: in the second semester of 2007, both series were in an ascending escalade, but Microsoft value went higher and the gap was also wider; during 2009, Microsoft showed higher increase over its stock prices, culminating in a wider gap during the transition to 2010.
 
-As for the ACF, we notice that there is a persistent behavior in both series (bottom graphs). Almost all the lags up to 180 (6 months, approximately) are significant and there is no indication of a ``cut'' in some lag as would be the case in an ARMA model with the MA coefficients different from zero. Moreover, the PACF, which is computed by computing the autocorrelation that is remaining after considering the previous lags, is highly persistent for the first lag, as for the others up until lag 10 it seems that they all fall inside the confidence intervals (we also did for higher $h$ and observed the same behavior). So, at least for these two series, it seems that we are dealing with an AR(1) with an unit root (i.e., a random walk).  
+As for the ACF, we notice that there is a persistent behavior in both series (bottom graphs). That is, there is a slow autocorrelation decay. Almost all the lags up to 180 (6 months, approximately) are significant and there is no indication of a "cut" in some lag, as would be the case in an ARMA model with the MA coefficients different from zero. Moreover, the PACF, which is obtained by computing the autocorrelation that is remaining after considering the previous lags, is highly persistent for the first lag, as for the others up until lag 10 it seems that they all fall inside the confidence intervals (we also did for higher $h$ and observed the same behavior). So, at least for these two series, it seems that we are dealing with an AR(1) with an unit root (i.e., a random walk).  
 
-*COMENTÁRIOS* (Aisha) Aqui acho bom a gente voltar nos slides e depois ver se tem mais alguma coisa a ser falada dessa dinâmica. Talvez alguma coisa sobre estacionariedade? Eu coloquei a PACF pra ver como fica junto, não sei se agora o gráfico da série não está muito pequeno. No final eu volto pra ajustar isso.
+*COMENTÁRIOS* (Aisha) Aqui acho bom a gente voltar nos slides e depois ver se tem mais alguma coisa a ser falada dessa dinâmica. Talvez alguma coisa sobre estacionariedade? Eu coloquei a PACF pra ver como fica junto, não sei se agora o gráfico da série não está muito pequeno. No final eu volto pra ajustar isso. (PALOMA) Adicionei um pouquinho mais (bem pouquinho). O que é h no segundo paragrafo? Tirando isso acho que ficou bom!
 
 ## Question 2
 
@@ -579,10 +581,16 @@ From the lecture slides, we have that the Augmented Dickey Fuller (ADF) test for
 
 Start from the AR(p) equation:
 \begin{equation}
-  X_t = \phi_1 X_{t-1} + \phi_2 X_{t-2} + \ldots + \phi_p X_{t-p} + \epsilon_t
+  X_t = \phi_1 X_{t-1} + \phi_2 X_{t-2} + \ldots + \phi_p X_{t-p} + \epsilon_t \quad \Rightarrow \quad \phi(L)X_t = \epsilon_t
 \end{equation}
+where $\phi(L) = 1 - \phi_1L - \cdots -\phi_p L^p$. There is unit root if $\phi_1L + \cdots + \phi_p L^p = 1$. An easier way to test if this is true is by writing the model above in terms of first differences in the AR(p) model above.
+\begin{align}
+  \Delta X_t &= (\phi_1L + \cdots + \phi_p L^p - 1)X_{t-1} + \phi_2^* \Delta X_{t-1} + \phi_3^* \Delta X_{t-2} + \cdots + \phi_p^* \Delta X_{t-p+1} + \epsilon_t \\
+  \Delta X_t &= \beta X_{t-1} + \phi_2^* \Delta X_{t-1} + \phi_3^* \Delta X_{t-2} + \cdots + \phi_p^* \Delta X_{t-p+1} + \epsilon_t
+\end{align}
+where $\phi_j^* = -\sum_{i=j}^p \phi_i$ for $j=2,\cdots,p$. Therefore, since zero $beta$ would imply unit roots, the ADF test will be testing the null hypothesis $H_0: \beta=0$ being equal to zero versus the alternative $H_A: -2<\beta<0$, which implies stationarity. The test statistic of such test is $ADF = \frac{\hat{\beta}}{SE(\hat{\beta})}$, which follows a Dickey-Fuller distribution.
 
-*Comentário* (AISHA) Terminar de colocar as equações depois se for o caso.
+*Comentário* (AISHA) Terminar de colocar as equações depois se for o caso. (PALOMA) Eram essas as equações que você tinha em mente? Precisa colocar a versão com intercepto? Acho que a referência na linha 602 não está funcionando direito.
 
 Our procedure then will be:
 
@@ -700,7 +708,7 @@ Now we are ready to estimate the best (using BIC criteria) AR model for all the 
 
 ```{r, eval = TRUE, message = FALSE, warning = FALSE, echo = FALSE}
 # Saves the best model
-maxlag = 10
+maxlag = 4
 mApple <- fEstAR(dfData01, 3, maxlag)
 mExxon <- fEstAR(dfData01, 4, maxlag)
 mFord  <- fEstAR(dfData01, 5, maxlag)
@@ -741,7 +749,7 @@ coefSP500 <-  as.integer(unlist(strsplit(unite(colsplit(
   str_replace_all(substring(mSP500[2], 18), "[[() ]]", ""), ",", names = 3), 
   col, sep = ",", remove = TRUE)[1,1], ",")))
 coefYahoo <-  as.integer(unlist(strsplit(unite(colsplit(
-  str_replace_all(substring(mYahoo[2], 18), "[[() ]]", ""), ",", names = 1:7), 
+  str_replace_all(substring(mYahoo[2], 18), "[[() ]]", ""), ",", names = 1:4), 
   col, sep = ",", remove = TRUE)[1,1], ",")))
 
 # Put together
@@ -884,9 +892,9 @@ p11 <- autoplot.acf01(ggPacf01(lRes[[1]], plot = FALSE, lag.max = lagmax,
 grid.arrange(p1, p11, nrow = 1)
 ```
 
-To further investigate this, we used an automatic model selection function, `auto.arima()`, which fits an ARIMA(p,d,q) model to the data. Accordingly to the function, the best model would be an ARIMA(0,1,0), i.e., no lag for the AR neither for the MA part, only a differencing term. However, since the goal of this exercise is not to find the best fit but work with the unit roots, we decided to not continue in this direction.
+To further investigate this, we used an automatic model selection function, `auto.arima()`, which fits an ARIMA(p,d,q) model to the data. According to the function, the best model would be an ARIMA(0,1,0), i.e., no lag for the AR neither for the MA part, only a differencing term. However, since the goal of this exercise is not to find the best fit but work with the unit roots, we decided to not continue in this direction.
 
-*Comentário*: Achei que as tabelas estão meio feias e não sei se é necessário ter esses modelos todos, mas ao mesmo tempo mostra que a gente teve alguma preocupação em olhar o modelo selecionado. O que vc acha? Eu sei que idealmente a gente teria tudo numa tabela só, mas infelizmente eu não sei como formatar isso de forma rápida agora.
+*Comentário*: Achei que as tabelas estão meio feias e não sei se é necessário ter esses modelos todos, mas ao mesmo tempo mostra que a gente teve alguma preocupação em olhar o modelo selecionado. O que vc acha? Eu sei que idealmente a gente teria tudo numa tabela só, mas infelizmente eu não sei como formatar isso de forma rápida agora. (Paloma) Eu não teria feito melhor! Por mim, fica do jeito que está.
 
 Now that we have our final models, we can compute the ADF statistic.
 
@@ -1005,9 +1013,15 @@ The function below is based on the `adf.test()` function from the package `tseri
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-**Comments:** From the table with the the ADF test, using as null-hypothesis that the serie has a unit root, we cannot reject $H_0$ for any ot the companies using a significance level of $10\%$. This result was already expected by us: as mentioned in the other parts of this assignment, the series indeed show that the AR models estimated were not correctly specified and from the persistence of the ACF and PACF of the original data, there is indication of persistence in the series. From the economic point of view, since the series are the prices and not the returns, it is not surprising that they all exibit unit roots using the test. Prices usually have a long dependency through the price level, which is known to be non-stationary because it is the accumulation of past prices. This is the same problem we would have faced in part one when using GDP if we used the level GDP and not the growth rate.
+**Comments:** From the table with the the ADF test, using as null-hypothesis that the serie has a unit root, we cannot reject $H_0$ for any ot the companies using a significance level of $10\%$. This result was already expected by us: as mentioned in the other parts of this assignment, the series indeed show that the AR models estimated were not correctly specified and from the persistence of the ACF and PACF of the original data, there is indication of persistence in the series. From the economic point of view, since the series are prices, not returns, it is not surprising that they all exibit unit roots using the test. Prices usually have a long dependency through the price level, which is known to be non-stationary because it is the accumulation of past prices. This is the same problem we would have faced in part one when using GDP if we used the level GDP and not the growth rate.
 
-*Comentário* (Aisha) A questão pede pra exlicar com cuidado, isso foi tudo que consegui pensar.
+*Comentário* (Aisha) A questão pede pra exlicar com cuidado, isso foi tudo que consegui pensar. 
+
+(PALOMA) Eu concordo com a interpretação econômica, mas estou tendo problemas pra entender o comentário sobre o AR não ser bem estimado. Ele não é estável (tem raiz unitaria), mas ainda assim é um AR, nao? 
+
+Sugestão (não sei se fui longe demais ao mencionar regressão espúria hehe):"From the table with the the ADF test, using as null-hypothesis that the series has a unit root, we cannot reject $H_0$ for any ot the companies using a significance level of $10\%$. This result means that none of the stock prices series were generated by a stationary process. However, we give a word of caution: as mentioned in the other parts of this assignment, there is evidence that the AR models estimated were not correctly specified (look back at the residual analysis, for example). Overall, the identification of the presence of unit roots is a first step towards investigating issues related to spurious regression. 
+
+From the economic point of view, since the series are prices, not returns, it is not surprising that they all exibit unit roots using the test. Prices usually have a long dependency through the price level, which is known to be non-stationary because it is the accumulation of past prices. This is a similar problem we would have faced in part one when using GDP if we used the level GDP and not the growth rate."
 
 ## Question 3
 
@@ -1104,6 +1118,8 @@ and the variance of the prediction error will be given by $h \cdot \sigma^2$. To
 
 **Comments:** Plots were made in different graphs due to scale differences and to be able to better visualize the forecast region we only ploted the last 90 days of each series. As expected, the forecasts are not informative about the prices because they are just the last information available. We wouldn't give any investment advice bases on this kind of model, given the discussion above on how it is not possible to predict stock prices. In other words, it is not possible, based on this model, to say if we expected the price to go up or down, since the forecast is always the same last value. 
 
+*PALOMA:* Eu acho que vai além disso. A precisão na verdade não é nem a informação do periodo anterior. É apenas a variância do erro, o que não é informativo. Isso é uma consequência direta do passeio aleatório, uma vez que, segundo esse modelo, alterações nos preços são independentes umas das outras (por isso a primeira diferença é zero). Sugestão de enrrolation: "Plots were made in different graphs due to scale differences and to be able to better visualize the forecast region we only ploted the last 90 days of each series. As expected, the forecasts are not informative about the prices because, as stated above, they are just the standard deviation of the innovations, which means that forecasts basically look at the innovations to compute the next period price. That is, random walk model applied in a finance context would imply that prices tomorrow cannot be predicted from historical trend, since prices today will not tell you what will happen with the prices tomorrow. With this in mind, we would not give any investment advice based on this kind of model, given it does not help when it comes to predicting stock prices. In other words, it is not possible, based on this model, to say if we expected the price to go up or down, since the forecast is always the same last value. "
+
 ## Question 4
 
 _Please investigate the following claim_:
@@ -1156,23 +1172,23 @@ p4 <- autoplot.acf01(ggPacf01(tsData02, plot = FALSE, lag.max = 10,
 p0
 ```
 
-**Comments:** Given the the different scale in the stock prices, the visual inspection is not clear that the series move together, as it was for Intel and Microsoft prices. However, we can notice some common downwards and upward trends in the series, which might suggest that they are both $I(1)$ and candidate to be cointegrated. 
+**Comments:** Given the different scale in the stock prices, the visual inspection is not clear that the series move together, as it was for Intel and Microsoft prices. However, we can notice some common downwards and upward trends in the series, which might suggest that they are both $I(1)$ and candidate to be cointegrated. 
 
+So, we proceed to analyze if in fact the series are cointegrated to rule out spurious regression. As we discussed in the lectures, if two series $Y_t$ and $X_t$ are cointegrated, then $Y_t - \lambda X_t$ is stationary. Since we do not have the value for $\lambda$, it must first be estimated.
 
-So, we proceed to analyze if in fact the series are cointegrated to rule out spurious regression. As we discussed in the lectures, if two series $Y_t$ and $X_t$ are cointegrated, then $Y_t - \lambda X_t$ are stationary. Since we don't have the value for $\lambda$, it must first be estimated.
-
-A simple way to do this is first compute the regression $Y_t = \beta_0 + \beta_1 X_t + \varepsilon_t$ to get an estimate for $\beta_1$ using OLS. Then, we compute the residuals using $\hat{\varepsilon}_t = Y_t - \hat{\beta}_1X_t$ and verify the stationarity using the ADF test routine that we based our previous tests (since now we have a single series and not several as before, it was best to use the package function directly and not our modified version).
+A simple way to do this is first compute the regression $Y_t = \beta_0 + \beta_1 X_t + \varepsilon_t$ to get an estimate for $\beta_1$ using OLS. Then, we compute the residuals using $\hat{\varepsilon}_t = Y_t - \hat{\beta}_0 - \hat{\beta}_1X_t$ and verify the stationarity using the ADF test routine that we used before in previous tests (since now we have a single series and not several as before, it was best to use the package function directly and not our modified version).
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
   mReg <- lm(tsData02 ~ tsData01)
+  #mRes <- tsData02 - mReg$coefficients[2]*tsData01
   mRes <- tsData02 - mReg$coefficients[1] - mReg$coefficients[2]*tsData01
   tResult <- adf.test(mRes, alternative = c("stationary"))
 ```
 
 Using the null hypothesis that the residuals are not stationary, we obtained a test statistic of `r round(as.numeric(tResult$statistic),4)`, which corresponds to a p-value of `r round(as.numeric(tResult$p.value),4)`, so the conclusion is that we cannot reject $H_0$ for a significance level of $10\%$.
 
-Therefore, the analysis leads us to conclude that both series are not cointegrated and it is not correct to use Exxon prices to explain Microsoft prices. Apart from the statistical analysis, even without this results, we think it would be hard to sell an economic story on how the oil and gas prices could affect Microsoft shares. It is true that oil prices have an impact in production of goods and services in the real economy, because they affect directly the transports. However, Microsoft is a software industry, mostly, therefore the delivery of its products should not be so sensible to gas and oil, even if the demand for its products rise as a consequence of the oil price fluctuation. And of course in case of increase in demand, it could be that microsoft needs to increase the inputs, but this means hiring more workers, which also would not be affected by gas prices.
+Therefore, the analysis leads us to conclude that both series are not cointegrated and it is not correct to use Exxon prices to explain Microsoft prices. Apart from the statistical analysis, even without this results, we think it would be hard to sell an economic story on how the oil and gas prices could affect Microsoft shares. It is true that oil prices have an impact in production of goods and services in the real world, because they affect directly the transportation sector. However, Microsoft is a software industry, mostly, therefore the delivery of its products should not be so sensible to gas and oil, even if the demand for its products rise as a consequence of the oil price fluctuation. And, of course, in case of increase in demand, it could be that Microsoft needs to increase the inputs, but this means hiring more workers, which also would not be affected by gas prices.
 
-*Comentários:* Acho que era isso, mas eu não reli o texto pra ver se está bem escrito.
+*Comentários:* Acho que era isso, mas eu não reli o texto pra ver se está bem escrito. (PALOMA) Agreed.
 
 # References
