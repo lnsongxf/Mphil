@@ -1,0 +1,959 @@
+---
+title: "Econometrics III HW - part 2"
+author: "A. Schmidt and P. Assunção"
+date: "10-3-2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# Loading packages and helper functions
+
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Verify if a package is already installed, if not, download and install before loading. 
+chooseCRANmirror(graphics = FALSE, ind = 10)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries, dynlm, dLagM, lubridate)
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Prevents code from getting out of the page
+## Works with almost everything except urls and strings.
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Helper function for the histograms (adapted from the source of the forecast package)
+gghistogram01 <- function(x, add.normal=FALSE, add.kde=FALSE, add.rug=TRUE, bins, boundary=0, xlabel = "Series", ylabel = "Number of observations") {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (missing(bins)) {
+      bins <- min(500, grDevices::nclass.FD(na.exclude(x)))
+    }
+    data <- data.frame(x = as.numeric(c(x)))
+    # Initialise ggplot object and plot histogram
+    binwidth <- (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)) / bins
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_histogram(ggplot2::aes(x), data = data, binwidth = binwidth, boundary = boundary) +
+      # ggplot2::xlab(deparse(substitute(x)))
+      ggplot2::xlab(xlabel) +
+      ggplot2::ylab(ylabel) +
+      ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8))
+    # Add normal density estimate
+    if (add.normal || add.kde) {
+      xmin <- min(x, na.rm = TRUE)
+      xmax <- max(x, na.rm = TRUE)
+      if (add.kde) {
+        h <- stats::bw.SJ(x)
+        xmin <- xmin - 3 * h
+        xmax <- xmax + 3 * h
+      }
+      if (add.normal) {
+        xmean <- mean(x, na.rm = TRUE)
+        xsd <- sd(x, na.rm = TRUE)
+        xmin <- min(xmin, xmean - 3 * xsd)
+        xmax <- max(xmax, xmean + 3 * xsd)
+      }
+      xgrid <- seq(xmin, xmax, l = 512)
+      if (add.normal) {
+        df <- data.frame(x = xgrid, y = length(x) * binwidth * stats::dnorm(xgrid, xmean, xsd))
+        p <- p + ggplot2::geom_line(ggplot2::aes(df$x, df$y), col = "#ff8a62")
+      }
+      if (add.kde) {
+        kde <- stats::density(x, bw = h, from = xgrid[1], to = xgrid[512], n = 512)
+        p <- p + ggplot2::geom_line(ggplot2::aes(x = kde$x, y = length(x) * binwidth * kde$y), col = "#67a9ff")
+      }
+    }
+    if (add.rug) {
+      p <- p + ggplot2::geom_rug(ggplot2::aes(x))
+    }
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# ACF plot function adapted from the `forecast` package
+autoplot.acf01 <- function(object, ci=0.95, title = "Dutch quaterly GDP growth", ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "acf")) {
+      stop("autoplot.acf requires a acf object, use object=object")
+    }
+ 
+    acf <- `dimnames<-`(object$acf, list(NULL, object$snames, object$snames))
+    lag <- `dimnames<-`(object$lag, list(NULL, object$snames, object$snames))
+ 
+    data <- as.data.frame.table(acf)[-1]
+    data$lag <- as.numeric(lag)
+ 
+    if (object$type == "correlation") {
+      data <- data[data$lag != 0, ]
+    }
+ 
+    # Initialise ggplot object
+    p <- ggplot2::ggplot(
+      ggplot2::aes_(x = ~lag, xend = ~lag, y = 0, yend = ~Freq),
+      data = data
+    )
+    p <- p + ggplot2::geom_hline(yintercept = 0)
+ 
+    # Add data
+    p <- p + ggplot2::geom_segment(lineend = "butt", ...)
+ 
+    # Add ci lines (assuming white noise input)
+    ci <- qnorm((1 + ci) / 2) / sqrt(object$n.used)
+    p <- p + ggplot2::geom_hline(yintercept = c(-ci, ci), colour = "blue", linetype = "dashed")
+ 
+    # Add facets if needed
+    if(any(dim(object$acf)[2:3] != c(1,1))){
+      p <- p + ggplot2::facet_grid(
+        as.formula(paste0(colnames(data)[1:2], collapse = "~"))
+      )
+    }
+ 
+    # Prepare graph labels
+    if (!is.null(object$ccf)) {
+      ylab <- "CCF"
+      ticktype <- "ccf"
+      #main <- paste("Series:", object$snames)
+      main <- title
+      nlags <- round(dim(object$lag)[1] / 2)
+    }
+    else if (object$type == "partial") {
+      ylab <- "PACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else {
+      ylab <- NULL
+    }
+ 
+    # Add seasonal x-axis
+    # Change ticks to be seasonal and prepare default title
+    if (!is.null(object$tsp)) {
+      freq <- object$tsp[3]
+    } else {
+      freq <- 1
+    }
+    if (!is.null(object$periods)) {
+      periods <- object$periods
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+    p <- p + ggplot2::scale_x_continuous(breaks = seasonalaxis(
+      freq,
+      nlags, type = ticktype, plot = FALSE
+    ), minor_breaks = minorbreaks)
+    p <- p + ggAddExtras(ylab = ylab, xlab = "Lag", main = main)
+    p <- p + ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8), plot.title = element_text(size=10))
+    return(p)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggAcf <- function(x, lag.max = NULL,
+                  type = c("correlation", "covariance", "partial"),
+                  plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Acf)
+  object <- eval.parent(cl)
+  object$tsp <- tsp(x)
+  object$periods <- attributes(x)$msts
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggPacf <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  object <- Acf(x, lag.max = lag.max, type = "partial", na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggCcf <- function(x, y, lag.max=NULL, type=c("correlation", "covariance"),
+                  plot=TRUE, na.action=na.contiguous, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Ccf)
+  object <- eval.parent(cl)
+  object$snames <- paste(deparse(substitute(x)), "&", deparse(substitute(y)))
+  object$ccf <- TRUE
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+autoplot.mpacf <- function(object, ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "mpacf")) {
+      stop("autoplot.mpacf requires a mpacf object, use object=object")
+    }
+    if (!is.null(object$lower)) {
+      data <- data.frame(Lag = 1:object$lag, z = object$z, sig = (object$lower < 0 & object$upper > 0))
+      cidata <- data.frame(Lag = rep(1:object$lag, each = 2) + c(-0.5, 0.5), z = rep(object$z, each = 2), upper = rep(object$upper, each = 2), lower = rep(object$lower, each = 2))
+      plotpi <- TRUE
+    }
+    else {
+      data <- data.frame(Lag = 1:object$lag, z = object$z)
+      plotpi <- FALSE
+    }
+    # Initialise ggplot object
+    p <- ggplot2::ggplot()
+    p <- p + ggplot2::geom_hline(ggplot2::aes(yintercept = 0), size = 0.2)
+ 
+    # Add data
+    if (plotpi) {
+      p <- p + ggplot2::geom_ribbon(ggplot2::aes_(x = ~Lag, ymin = ~lower, ymax = ~upper), data = cidata, fill = "grey50")
+    }
+    p <- p + ggplot2::geom_line(ggplot2::aes_(x = ~Lag, y = ~z), data = data)
+    if (plotpi) {
+      p <- p + ggplot2::geom_point(ggplot2::aes_(x = ~Lag, y = ~z, colour = ~sig), data = data)
+    }
+ 
+    # Change ticks to be seasonal
+    freq <- frequency(object$x)
+    msts <- is.element("msts", class(object$x))
+ 
+    # Add seasonal x-axis
+    if (msts) {
+      periods <- attributes(object$x)$msts
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+ 
+    p <- p + ggplot2::scale_x_continuous(
+      breaks = seasonalaxis(frequency(object$x), length(data$Lag), type = "acf", plot = FALSE),
+      minor_breaks = minorbreaks
+    )
+ 
+    if (object$type == "partial") {
+      ylab <- "PACF"
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+    }
+ 
+    p <- p + ggAddExtras(ylab = ylab)
+ 
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+# Other functions from the forecast package
+#####
+
+# Make nice horizontal axis with ticks at seasonal lags
+# Return tick points if breaks=TRUE
+seasonalaxis <- function(frequency, nlags, type, plot=TRUE) {
+  # List of unlabelled tick points
+  out2 <- NULL
+  # Check for non-seasonal data
+  if (length(frequency) == 1) {
+    # Compute number of seasonal periods
+    np <- trunc(nlags / frequency)
+    evenfreq <- (frequency %% 2L) == 0L
+ 
+    # Defaults for labelled tick points
+    if (type == "acf") {
+      out <- pretty(1:nlags)
+    } else {
+      out <- pretty(-nlags:nlags)
+    }
+ 
+    if (frequency == 1) {
+      if (type == "acf" && nlags <= 16) {
+        out <- 1:nlags
+      } else if (type == "ccf" && nlags <= 8) {
+        out <- (-nlags:nlags)
+      } else {
+        if (nlags <= 30 && type == "acf") {
+          out2 <- 1:nlags
+        } else if (nlags <= 15 && type == "ccf") {
+          out2 <- (-nlags:nlags)
+        }
+        if (!is.null(out2)) {
+          out <- pretty(out2)
+        }
+      }
+    }
+    else if (frequency > 1 &&
+      ((type == "acf" && np >= 2L) || (type == "ccf" && np >= 1L))) {
+      if (type == "acf" && nlags <= 40) {
+        out <- frequency * (1:np)
+        out2 <- 1:nlags
+        # Add half-years
+        if (nlags <= 30 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((1:np) - 0.5))
+        }
+      }
+      else if (type == "ccf" && nlags <= 20) {
+        out <- frequency * (-np:np)
+        out2 <- (-nlags:nlags)
+        # Add half-years
+        if (nlags <= 15 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((-np:np) + 0.5))
+        }
+      }
+      else if (np < (12 - 4 * (type == "ccf"))) {
+        out <- frequency * (-np:np)
+      }
+    }
+  }
+  else {
+    # Determine which frequency to show
+    np <- trunc(nlags / frequency)
+    frequency <- frequency[which(np <= 16)]
+    if (length(frequency) > 0L) {
+      frequency <- min(frequency)
+    } else {
+      frequency <- 1
+    }
+    out <- seasonalaxis(frequency, nlags, type, plot = FALSE)
+  }
+  if (plot) {
+    axis(1, at = out)
+    if (!is.null(out2)) {
+      axis(1, at = out2, tcl = -0.2, labels = FALSE)
+    }
+  }
+  else {
+    return(out)
+  }
+}
+
+
+ggPacf01 <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, type = "correlation", ...) {
+  object <- Acf(x, lag.max = lag.max, type = type, na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+
+
+ggAddExtras <- function(xlab=NA, ylab=NA, main=NA) {
+  dots <- eval.parent(quote(list(...)))
+  extras <- list()
+  if ("xlab" %in% names(dots) || is.null(xlab) || any(!is.na(xlab))) {
+    if ("xlab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(dots$xlab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(paste0(xlab[!is.na(xlab)], collapse = " "))
+    }
+  }
+  if ("ylab" %in% names(dots) || is.null(ylab) || any(!is.na(ylab))) {
+    if ("ylab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(dots$ylab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(paste0(ylab[!is.na(ylab)], collapse = " "))
+    }
+  }
+  if ("main" %in% names(dots) || is.null(main) || any(!is.na(main))) {
+    if ("main" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(dots$main)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(paste0(main[!is.na(main)], collapse = " "))
+    }
+  }
+  if ("xlim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::xlim(dots$xlim)
+  }
+  if ("ylim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::ylim(dots$ylim)
+  }
+  return(extras)
+}
+ 
+ggtsbreaks <- function(x) {
+  # Make x axis contain only whole numbers (e.g., years)
+  return(unique(round(pretty(floor(x[1]):ceiling(x[2])))))
+}
+ 
+```
+
+# Assignment 2
+
+## Introduction
+
+_By the beginning of 2014, in the face of fast rising unemployment, the Dutch Ministry of Social Affairs is concerned that the provisions for future government expenditure with social pensions may be severely under-estimated. This is particularly true if the economy is hit again by a large negative shock. Suppose that you have been asked to analyze alternative unemployment scenarios._
+
+## Importing and checking data
+
+```{r}
+urlRemote  <- "https://raw.githubusercontent.com/aishameriane"
+pathGithub <- "/Mphil/master/EconIII/data_assign_p2.csv"
+token      <- "?token=AAVGJTRVJIKVBISR37WEY3K6RIY4E"
+
+url      <- paste0(urlRemote, pathGithub, token)
+dfData21 <- read.csv2(url, sep = ",", dec = ".", header = TRUE)
+```
+
+As in Part I, we make an initial check on the dataset. The head and tail of the imported dataset indeed show the quarterly data ranging from from the second quarter of 1987 until the first quarter of 2014.
+
+```{r,echo = FALSE}
+cbind(head(dfData21), tail(dfData21)) %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+As for the descriptive statistics for GDP and unemployment, we see there is no missing information and all values are numeric (there are no problems of formatting). Furthermore, the statistics show values reasonable with the variables pourpose. That is, we do not observe unreasonable high/low levels of GDP growth and unemployment.
+
+```{r, echo = FALSE}
+# Descriptives
+descriptives     <- matrix(NA, nrow = 8, ncol = (ncol(dfData21)-1))
+rownames(descriptives) <- c("Observations", "Minimum", "1st quartile",
+                      "Mean", "Median",  "3rd quartile", "Maximum",
+                      "Desv. Pad.")
+
+## This can be generalized for when we have several columns
+desc <- function(x) {
+  n       <- length(x)
+  minimum <- min(x, na.rm = TRUE)
+  first_q <- quantile(x, 0.25, na.rm = TRUE)
+  media   <- mean(x, na.rm = TRUE)
+  mediana <- median(x, na.rm = TRUE)
+  third_q <- quantile(x, 0.75, na.rm = TRUE)
+  maximum <- max(x, na.rm = TRUE)
+  std     <- sd(x, na.rm = TRUE)
+    return(list(n = n, minimum = minimum, first_quar = first_q, media = media, mediana = mediana, third_quar = third_q, maximum = maximum, std = std))
+}
+
+for (i in 1:8){
+  descriptives[i, 1] <- round(as.numeric(desc(dfData21[,2])[i]),4)
+}
+
+for (i in 1:8){
+  descriptives[i, 2] <- round(as.numeric(desc(dfData21[,3])[i]),4)
+}
+
+descriptives[1,] <- as.integer(descriptives[1,])
+descriptives <- data.frame(descriptives)
+names(descriptives) <- c("Quart. GDP", "Un. Rate")
+
+descriptives %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+#Transform into a time series object. 
+tsData21 <- xts(dfData21[,2:3], order.by = as.yearqtr(dfData21[,1]), frequency = 4)
+```
+
+
+## Question 1
+_Plot the sample of Dutch quarterly unemployment rates and Dutch GDP quarterly growth rates that you have at your disposal. Estimate an AR model for the GDP growth rate and an ADL model for the unemployment rate using the GDP growth rate as an exogenous explanatory variable. Please adopt a general-to-specific methodology for both models by eliminating insignificant lags. For the AR model start with four lags of GDP. For the ADL model start with four lags of each variable. Report the final estimated AR and ADL models, working at a 5% significance level. Comment on the estimated coefficients. What do these coefficients tell you about the dynamic properties of the unemployment rate and the GDP growth rate?_
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Data from recessions available at: https://eabcn.org/dc/chronology-euro-area-business-cycles
+recessions_1 <- c("1992Q1",
+                "2008Q1",
+                "2011Q3")
+
+recessions_2 <- c("1993Q3",
+                "2009Q2",
+                "2013Q1")
+
+recessions.trim <- data.frame(1:3, 1:3, 1:3, 
+                              as.Date(as.yearqtr(recessions_1)), 
+                              as.Date(as.yearqtr(recessions_2)))
+names(recessions.trim) <- c("DATE", "Variable", "Value", "Peak", "Trough")
+
+
+dfData02 <- melt(dfData21, id.vars = "obs")
+names(dfData02) <- c("DATE", "Variable", "Value")
+
+p0 <- ggplot(dfData02) +
+        geom_line(aes(x = as.Date(as.yearqtr(DATE)), y = Value, color = Variable), alpha = 1)+
+        labs(title="Dutch quarterly GDP growth and unemployment rate", 
+                  subtitle = "1987Q2 to 2014Q1",  y = "Rate", 
+                  x= "Date", color = "Series") +
+        scale_x_date(date_breaks = "24 months")+ 
+        scale_colour_brewer(palette = "Set1", labels = c("GDP Growth", "Unemployment")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), legend.position = "bottom") +
+        geom_rect(data=recessions.trim, aes(xmin=Peak, xmax=Trough, ymin=-Inf, ymax=+Inf), fill='grey', alpha=0.4) 
+
+# Making the graph
+p1 <- autoplot(tsData21[,1]) + 
+  theme_bw() + 
+  geom_line(color = "dark blue") + 
+  labs(title = "Dutch quarterly GDP growth - 1987Q2 to 2014Q1", x = "Date", y = "GDP growth")
+
+p2 <- autoplot(tsData21[,2]) + 
+  theme_bw() + 
+  geom_line(color = "dark blue") + 
+  labs(title = "Dutch quarterly unemployment rate - 1987Q2 to 2014Q1", x = "Date", y = "Unemployment rate")
+
+#grid.arrange(p1, p2, nrow=2)
+p0
+```
+
+*Comments on the plots:* We start by analysing the GDP series. As discussed in Part I, there seems to be some change in the time series behavior after the turn of the millenium, with a large drop during the 2008 financial crisis. Now, with data up to 2014, we observe a recovery of the GDP growth to levels pre crisis around 2 years after the crisis. However, after the 2010s, GDP growth seems to be oscilating around zero (or very low) growth, with a volatily smaller than the one observed in the 90s. 
+
+As for the unemployment rate, we observe some sort of cycical behaviour that seems to last for (roughly) 5 years. One exception to this behaviour is around the financial crisis period. Although unemployment was indeed smaller in 2010 than in 2005, one would expect that the continuous drop from 2005 until 2010. That is, that the favorable cenario for umemployment rate, where the economoy is experiencing diminishing unemployment, would last for at least a couple more years. Instead, we observe that such drop occurs up to 2008, where the unemployment trend is reversed and the economy faces more unemployment as the crisis goes on. After the crises, we observe a mostly increasing unemployment trend until the end of the data sample, with a short drop after 2010.
+
+The gray areas in the graph represents the recessions in the Euro Area for the period (source: [Euro Area Business Cycle Network](https://eabcn.org/dc/chronology-euro-area-business-cycles). Notice that indeed the Dutch GDP growth rate was in decline during the last two periods flagges as recessions, but it was not case for the first one (from 1992Q1 to 1993Q3), but this is not an error: Netherlands only adopted the Euro in 1999.
+
+*PALOMA:* nao sei mais o que adicionar aqui, ja que nem é solicitado explicitamente uma análise desses gráficos. *AISHA* Acho que está bom. Eu fiz um gráfico onde as duas séries ficam juntas e adicionei as recessões com uma explicação no final.
+
+### AR(p) model for GDP - AR(4)
+
+*Comments about the estimation procedure*: As in Part I, we opted by a model including the intercept and we used the function `Arima()` from the `forecast` package.
+
+To avoid too many code in the document, only the final model code is appearing below and the remaining is omited --- the original code is available in the link provided at the begining of this document.
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+  mAR4  <- Arima(tsData21[,1], order = c(4,0,0))
+  
+  AR4coef           <- tidy(coeftest(mAR4), stringsAsFactors = FALSE) 
+  AR4coef           <- cbind(AR4coef[, 1], round(AR4coef[, 2:5], digits = 2))
+  colnames(AR4coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR4coef[,1] <- c("Lag 1", "Lag 2", "Lag 3", "Lag 4", "Intercept")
+  
+  AR4coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### AR(p) model for GDP - AR(3)
+
+#### With all lags
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+  
+  mAR3              <- Arima(tsData21[,1], order = c(3,0,0))
+
+  AR3coef           <- tidy(coeftest(mAR3), stringsAsFactors = FALSE) 
+  AR3coef           <- cbind(AR3coef[, 1], round(AR3coef[, 2:5], digits = 2))
+  colnames(AR3coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR3coef[,1]       <- c("Lag 1", "Lag 2", "Lag 3", "Intercept")
+  
+  AR3coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+#### Removing the second lag
+
+```{r, message = FALSE, warning = FALSE, echo = TRUE} 
+  mAR3              <- Arima(tsData21[,1], order = c(3,0,0), fixed = c(NA,0,NA, NA))
+
+  AR3coef           <- tidy(coeftest(mAR3), stringsAsFactors = FALSE) 
+  AR3coef           <- cbind(AR3coef[, 1], round(AR3coef[, 2:5], digits = 2))
+  colnames(AR3coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR3coef[,1]       <- c("Lag 1", "Lag 3", "Intercept")
+  
+  AR3coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+*Comments on the results:* We started by estimating and AR(4) and we use a significance level of 5% in our analysis. Since the coefficient for the fourth lag is statistically insignificant, we droped the fourth lag and re-estimated the model as an AR(3). From the results of this second model, the coefficient for the fourth lag is significant. However, the second lag p-value shows evidence of non-sisgnificance. Therefore, we reestimated the AR(3) with a zero coefficient for the second lag and obtained the final model:
+
+$$GDP\_QGR_t = 1.07 + 0.36 GDP\_QGR_{t-1} + 0.24 GDP\_QGR_{t-3} + \epsilon_t,$$
+$$\text{with} \quad \{\epsilon_t\}\sim WN(0,\sigma_{\epsilon}^2).$$
+
+According to this model, we have a persistence of the past GDP growth levels on the current growth. Also, since the coefficients are positive, we observe a "positive persistence". That is, past GDP growth tends to influence growth today in the same direction: growth would be related to some more growth in the future, and decline would be related with more future decline. Such persistence would last for about three quarters. 
+
+This lag persistence is consistent with the definition from the Euro Area Business Cycle Dating Committee (EABCDC) for a recession. Accordingly to the EABCDC, a recession is characterized as _"a significant decline in the level of economic activity, spread across the economy of the euro area, usually visible in **two or more** consecutive quarters of negative growth in GDP, employment and other measures of aggregate economic activity for the euro area as a whole.”_ ([source](https://eabcn.org/dc/methodology)).
+
+### ADL(p,q) model for unemployment (GDP growth as exogenous regressor) - ADL(4,4)
+
+*Comments about the estimation procedure*: 
+
+To estimate the model, we used the function `dynlm()` from the package `dynlm`. This is a wrapper for the class of `lm` functions in R, that offers some advantages by allowing to easily add lags from the series (by using the operator `L`). The same result would have been achieved by using the `lag()` function, but without the convenience of being able to preserve the objects as time series objects. If the model had seasonal or other components, it would be more easy to incorporate as well. The estimation procedure is the same as the one used in `lm()`, which can be consulted [here](https://www.rdocumentation.org/packages/stats/versions/3.6.2/source). 
+
+Now, we proceed with the estimation of an ADL model for quarterly unemployment rate, using quarterly GDP growth as regressor. At first, we attempted to follow the general-to-specific method for selecting the ADL model with best fit. However, by sequentially removing insignificant lags (respecting a chronological ordering), we ended up with a model with three lags for unemployment an no lags and no current value of GDP. Since we are interesting in investigating some dynamics between unemployment and economic activity, we opted for alternative ways of selecting the best fit. The procedure we opted for is to eliminate the most insignificant lags (now we are not following a chronological ordering). 
+
+Sequentially, those were the models estimated and the lags removed (based on the p-values):
+
+    * We started with an ADL(4,4) model and realized that the 4th lag of GDP growth is 
+    the one witht the highest p-value. Thus, this lag was removed. 
+    * Next, we estimated an ADL(4,3) and decided to eliminate the 2nd lag of GDP 
+    growth, and the the current GDP growth. 
+    * After estimating this model, we decided to eliminate the fourth lag of unemployment. 
+    By doing this, we were left with an ADL(3,3) with zero coefficient for the coefficient 
+    of current and second lag of GDP growth. 
+    * Finally, we proceed by eliminating the third lag of GDP growth and, since we are 
+    considering a significance level of 5%, we also eliminate the second lag of unemployment rate.
+    
+As before, to avoid too many code in the document, only the final model code is appearing below and the remaining is omited --- the original code is available in the link provided at the begining of this document.
+
+```{r, message = FALSE, warning = FALSE, echo= FALSE} 
+
+  mADL44 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) + L(ts(tsData21[,2]),2) 
+                  + L(ts(tsData21[,2]),3) + L(ts(tsData21[,2]),4) + ts(tsData21[,1]) 
+                  + L(ts(tsData21[,1])) + L(ts(tsData21[,1]),2) + L(ts(tsData21[,1]),3) 
+                  + L(ts(tsData21[,1]),4))
+  
+  ADL44coef           <- tidy(coeftest(mADL44), stringsAsFactors = FALSE) 
+  ADL44coef           <- cbind(ADL44coef[, 1], round(ADL44coef[, 2:5], digits = 2))
+  colnames(ADL44coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  ADL44coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-2)", "UN_RATE(-3)", 
+                           "UN_RATE(-4)", "GDP_QGR", "GDP_QGR(-1)", "GDP_QGR(-2)", 
+                           "GDP_QGR(-3)", "GDP_QGR(-4)")
+  
+  ADL44coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### ADL(4,3)
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+
+  mADL43 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) + L(ts(tsData21[,2]),2) 
+                  + L(ts(tsData21[,2]),3) + L(ts(tsData21[,2]),4) + ts(tsData21[,1]) 
+                  + L(ts(tsData21[,1])) + L(ts(tsData21[,1]),2) 
+                  + L(ts(tsData21[,1]),3))
+
+  ADL43coef           <- tidy(coeftest(mADL43), stringsAsFactors = FALSE) 
+  ADL43coef           <- cbind(ADL43coef[, 1], round(ADL43coef[, 2:5], digits = 2))
+  colnames(ADL43coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+  ADL43coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-2)", "UN_RATE(-3)", 
+                           "UN_RATE(-4)", "GDP_QGR", "GDP_QGR(-1)", "GDP_QGR(-2)", 
+                           "GDP_QGR(-3)")
+  
+  ADL43coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+### ADL(4,3) with zero coefficient for the second lag of GDP growth
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+
+  mADL43_0 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) + L(ts(tsData21[,2]),2) 
+                    + L(ts(tsData21[,2]),3) + L(ts(tsData21[,2]),4) + ts(tsData21[,1]) 
+                    + L(ts(tsData21[,1])) + L(ts(tsData21[,1]),3))
+  
+  ADL43_0coef           <- tidy(coeftest(mADL43_0), stringsAsFactors = FALSE) 
+  ADL43_0coef           <- cbind(ADL43_0coef[, 1], round(ADL43_0coef[, 2:5], digits = 2))
+  colnames(ADL43_0coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic
+                             P-Value')
+  ADL43_0coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-2)", "UN_RATE(-3)", 
+                             "UN_RATE(-4)", "GDP_QGR", "GDP_QGR(-1)", "GDP_QGR(-3)")
+  
+  ADL43_0coef  %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+### ADL(4,3) with zero coefficient for the current and second lag of GDP growth
+
+```{r, message = FALSE, warning = FALSE, echo= FALSE} 
+
+  mADL43_00 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) + L(ts(tsData21[,2]),2) 
+                     + L(ts(tsData21[,2]),3) + L(ts(tsData21[,2]),4) + L(ts(tsData21[,1])) 
+                     + L(ts(tsData21[,1]),3))
+  
+  ADL43_00coef           <- tidy(coeftest(mADL43_00), stringsAsFactors = FALSE) 
+  ADL43coef           <- cbind(ADL43_00coef[, 1], round(ADL43_00coef[, 2:5], digits = 2))
+  colnames(ADL43_00coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                              'P-Value')
+  ADL43_00coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-2)", "UN_RATE(-3)", 
+                              "UN_RATE(-4)", "GDP_QGR(-1)", "GDP_QGR(-3)")
+  
+  ADL43_00coef  %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+### ADL(3,3) with zero coefficient for the current and second lag of GDP growth
+
+```{r, message = FALSE, warning = FALSE, echo= FALSE} 
+  mADL33 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) + L(ts(tsData21[,2]),2) 
+                  + L(ts(tsData21[,2]),3) + L(ts(tsData21[,1])) + L(ts(tsData21[,1]),3))
+  
+  ADL33coef           <- tidy(coeftest(mADL33), stringsAsFactors = FALSE) 
+  ADL33coef           <- cbind(ADL33coef[, 1], round(ADL33coef[, 2:5], digits = 2))
+  colnames(ADL33coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  ADL33coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-2)", "UN_RATE(-3)", 
+                           "GDP_QGR(-1)", "GDP_QGR(-3)")
+  
+  ADL33coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### ADL(3,1) with coefficient zero for current GDP
+
+```{r, message = FALSE, warning = FALSE, echo= FALSE} 
+  mADL31 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) + L(ts(tsData21[,2]),2) 
+                  + L(ts(tsData21[,2]),3) + L(ts(tsData21[,1])))
+  
+  ADL31coef           <- tidy(coeftest(mADL31), stringsAsFactors = FALSE) 
+  ADL31coef           <- cbind(ADL31coef[, 1], round(ADL31coef[, 2:5], digits = 2))
+  colnames(ADL31coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  ADL31coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-2)", "UN_RATE(-3)", 
+                           "GDP_QGR(-1)")
+  
+  ADL31coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### ADL(3,1) with coefficient zero for current GDP and second lag of unemployment
+
+```{r, message = FALSE, warning = FALSE} 
+  mADL31_0 <- dynlm(ts(tsData21[,2]) ~ L(ts(tsData21[,2])) +L(ts(tsData21[,2]),3) 
+                    + L(ts(tsData21[,1])))
+  
+  ADL31_0coef           <- tidy(coeftest(mADL31_0), stringsAsFactors = FALSE) 
+  ADL31_0coef           <- cbind(ADL31_0coef[, 1], round(ADL31_0coef[, 2:5], digits = 2))
+  colnames(ADL31_0coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                             'P-Value')
+  ADL31_0coef[,1]       <- c("Intercept", "UN_RATE(-1)", "UN_RATE(-3)", "GDP_QGR(-1)")
+  
+  ADL31_0coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+*Comments on the results:* The resulting model from this procedure for model selection is an ADL(3,1) with no secong lag for unemployment and no current GDP growth:
+
+$$UN\_RATE_t = 0.21 + 1.40 UN\_RATE_{t-1} -0.43 UN\_RATE_{t-3} -0.03 GDP\_QGR_{t-1} + \varepsilon_t,$$
+$$\text{with} \quad \{\varepsilon_t\}\sim WN(0,\sigma_{\varepsilon}^2).$$
+
+From the coefficients, we note a very small, but signifficant, negative effect of previous period GDP growth on current unemployment. This effect makes sense since it is expected that, as the economic activity declines, employers would find it more difficult to keep employing the same amount of workers. There is also a second effect, which is more observed in recessions: during uncertain times, people who otherwise would be outside the labor force (for example studying or as domestic partner), starts to look for jobs, increasing the unemployment rate.
+
+As for the coefficients of unemployment lags, they show a positive effect of the unemployment rate from the period immediately before, but a negative effect of unemployment three periods before. This means that the trend for unemployment will most likely persist until next period, but then it will start changing a few quarters from now. This behavior is somewhat consistent with the cycles observed in the graph analysis.
+
+## Question 2
+
+_Use the estimated ADL model to calculate and interpret the short-run multiplier, the 2-step-ahead multiplier, and the long-run multiplier. Finally, report and interpret the long-run relation between the unemployment rate and the GDP growth rate._
+
+The final model will be given by:
+$$u_t = \alpha + \phi_1 u_{t-1} + \phi_2 u_{t-3} + \beta gdp_{t-1} + \varepsilon_t$$
+$$\{\varepsilon_t\}\sim WN(0,\sigma_{\varepsilon}^2)$$
+
+The estimated model will be:
+$$u_t = 0.21 + 1.40 u_{t-1} -0.43 u_{t-3} -0.03 gdp_{t-1} + \varepsilon_t$$
+$$\{\varepsilon_t\}\sim WN(0,\sigma_{\varepsilon}^2)$$
+
+The short-run multiplier tells us how the current value of the exogenous variable (quarterly GDP growth in our case) explains the endogenous variable (quarterly unemployment). Since we do not have $gdp_t$ as an exogenous regressor in the final model, the short-run multiplier will be zero (percentual increases over GDP lead to no changes in current unemployment. The derivation is as follows:
+$$u^*{t} =  \alpha + \phi_1 u{t-1} + \phi_2 u_{t-3} + \beta gdp_{t-1} + \varepsilon_{t} = u_t$$
+
+The 2-step-ahead multiplier will give us the impact on unemployment two-step ahead of a one unit temporary increase in current GDP growth. This multiplier will be equal to $\phi_1 \beta = 1.4 \cdot (-0.03) = -0.042$. That is, a percentage increase in GDP is expected to result in a fall of 0.042% in unemployment. The derivation is as follows:
+$$\begin{aligned}
+    u^{t+1} &= \alpha + \phi_1 u{t}^ + \phi_2 u_{t-2} + \beta (gdp_{t}+1) + \varepsilon_{t+1} \\
+     &=  \alpha + \phi_1 u_{t} + \phi_2 u_{t-2} + \beta gdp_{t} + \beta + \varepsilon_{t+1} \\
+     &= u_{t+1} + \beta \\
+    u^{t+2} &=  \alpha + \phi_1 u{t+1}^ + \phi_2 u_{t-1} + \beta gdp_{t+1} + \varepsilon_{t+2} \\
+     &=  \alpha + \phi_1 (u_{t+1} + \beta) + \phi_2 u_{t-1} + \beta gdp_{t+1} + \varepsilon_{t+2} \\
+     &= u_{t+2} + \phi_1 \beta
+\end{aligned}$$
+
+The long-run multiplier will give us the effect over unemployment of a permanent change in GDP growth, and it is obtained from the long run relationship between these two variables. Such relatioship is obtained from the fact that, in the long-run, variables should be equal (or very close to) their historical averages. Thus, the long-run relatioship between unemployment and GDP growth will be:
+$$\begin{aligned}
+    \overline{u} &= \alpha + \phi_1 \overline{u} + \phi_2 \overline{u} + \beta \overline{gdp} \\
+    \overline{u} &= \frac{\alpha}{1-\phi_1-\phi_2} + \frac{\beta}{1-\phi_1-\phi_2} \overline{gdp}.
+\end{aligned}$$
+
+Thus, the long-run multiplier will be $\frac{\beta}{1-\phi_1-\phi_2} = \frac{-0.03}{1-1.40+0.43} = -1$: 1% increase in GDP is expected to result in 1% fall on unemployment.
+
+
+## Question 3
+_Please provide a detailed comment on the following statement: "An increase in the GDP growth rate causes a reduction in the unemployment rate."_
+
+From the multipliers in the previous question, we can breakdown the effects of a change in GDP growth over unemployment rate by analyzing the multipliers for the short and long run. Since the short-run multiplier $\beta_0$ (the coefficient of GPD at time $t$ in the equation of unemployment) is zero, there is no immediate effect of the GDP growth rate over unemployment. 
+
+As time goes by, the effect of GPD over unemployment tends to get stronger and more negative. In the previous question, we found that there is no immediate effect of the GDP growth rate over unemployment (zero short-run multiplier). As part of the solution for the 2-step multiplier, however, we found the 1-step multiplier, which equals $\beta_1 = -0.03$. Thus, we have that changes in GDP start to have an effect over unemployment only after 1 period. The 2-step ahead multiplier, which is given by $\phi \beta_1 =$ `r 1.4*(-0.03)`, tells us that the effect of a positive GDP shock today will lead to even more decrease in unemployment two steps ahead, which indicates that the effect tends to become stronger (i.e. more negative) as time goes by. That is, there is some sort of persistence of temporary GDP shocks over unemployment rate that would lead to smaller and smaller unemployment. This result extends to the effects of a permanent shock on GDP growth, which according to the long-run multiplier, is of a proportional decrease in unemployment.
+
+Note that these numbers tell us something about how the dynamics of GDP growth would affect unemployment. This is not a causal analysis. Basically, what we found is that, for example, increasing GDP growth tends to be associated with decreasing unemployment, but we cannot tell yet whether increasing GDP causes decreasing unemployment. To be able to draw conclusions about the causality, one needs to make a deeper investigation using not only statistical methods but also more economic theory to sustain these conclusions. In the latter, one could discuss the relationship between Okun's Law and the model results.
+
+## Question 4
+_Suppose that the innovations are iid Gaussian. What is the probability of the unemployment rate rising above 7.8% in the second quarter of 2014? What is the probability that it drops below 7.8%? Do you trust the iid Gaussian assumption?_
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+  mRes1 <- mADL31_0$residuals
+  
+  sigma_Res1 <- summary(mADL31_0)$sigma
+
+  p1 <- hist(mRes1, density=20, breaks=20, prob=TRUE, xlab = "Model residuals", 
+             ylim=c(0,5), main = "Residuals of ADL(3,1)")
+  curve(dnorm(x, mean=mean(mRes1), sd=sigma_Res1), 
+      col="darkblue", lwd=2, add=TRUE, yaxt="n")
+  
+  # Kolmogorov-Smirnov test
+  KStest <- ks.test(mRes1, pnorm, 0, sigma_Res1)
+```
+
+To compute these probabilities, we first find the one step ahead estimator for $UN\_RATE$. Let the unemployment rate be $u_t$, the gdp quartely growth be $gdp_t$ and the one step ahead forecast be $\hat{u}_{T+1}$. Since we are assuming $\{\varepsilon_t\} \sim iid(0,\sigma_{\varepsilon}^2)$, we have that:
+
+$$\begin{aligned}
+    \hat{u}_{T+1} &= E[u_{T+1}|D_T = (u_1, \dots , u_T, gdp_1, \dots, gdp_T)] \\
+     &= E[\alpha + \phi_1 u_T + \phi_2 u_{T-2}+\beta gdp_T + \varepsilon_{T+1}|D_T]\\
+     &= \alpha + \phi_1 u_T + \phi_2 u_{T-2}+\beta gdp_T + E[\varepsilon_{T+1}|D_T]\\
+     &= \alpha + \phi_1 u_T + \phi_2 u_{T-2}+\beta gdp_T \\
+     &= u_{T+1} - \varepsilon_{T+1}
+\end{aligned}$$
+The last step follows from the innovations being iid Gaussian distributed.
+
+The forecast error term will be given by
+$$e_{T+1} = u_{t+1} - \hat{u}_{T+1} = \varepsilon_{T+1}.$$
+Therefore, we have that $e_T \sim iid(0,\sigma_{\varepsilon}^2)$.
+
+From this result, it follows that the probability that unemployment in the second quarter of 2014 will be
+
+$$\begin{aligned}
+P(u_{T+1} > 7.8) &= P(u_{T+1} - \hat{u}_{T+1} > 7.8 - \hat{u}_{T+1})\\
+     &= P(e_{T+1} > 7.8 - \hat{u}_{T+1}) \\
+     &= P\left(\frac{e_{T+1}}{\sigma_{\varepsilon}} > \frac{7.8 - \hat{u}_{T+1}}{\sigma_{\varepsilon}}\right)
+\end{aligned}$$
+
+From the historical values and model estimates for the parameters and the residual standard error (`r round(sigma_Res1,4)`), we get:
+$$\begin{aligned}
+    \hat{u}_{T+1} &= 0.21 + 1.40 \cdot 7.8 -0.43 \cdot 7.5 -0.03 \cdot (-0.37) = 7.9161\\
+    \hat{\sigma}_{\varepsilon} &= 0.1233
+\end{aligned}$$
+
+Thus, the probability that the unemployment exeeceds 7.8% in the second quarter of 2014 is
+$$\begin{aligned}
+    P(u_{T+1} > 7.8) &= P\left(\frac{e_{T+1}}{\hat{\sigma}_{\varepsilon}} > \frac{7.8 - 7.9161}{0.1233}\right) = P\left(\frac{e_{T+1}}{\hat{\sigma}_{\varepsilon}} > -0.94\right) = 0.8264 = 82.64\%
+\end{aligned}$$
+and the probability that unemployment will be smaller than 7.8% is $1-0.8264 = 17.36\%$.
+
+As for the last question, we look at the histogram and the p-value of Kolmogorov-Smirnov test. The null hypothesis of such test is that the data comes from a normal distribution, with mean $0$ and standard deviation `r round(sigma_Res1)` (as remark, the mean of the residuals is virtually zero, as we would expect). Since the p-value for the KS test is higher than $5%$ (KS statistic = `r round(KStest$statistic,4)`; p-value = `r round(KStest$p.value,4)`), we have evidence to not reject the null hypothesis. That is, we have evidence that the assumption of iid Gaussian distrubution for the innovations does seem reasonable. From the histogram of the residuals, we see that their distribution indeed seems to be bell shaped, but with somewhat heavy tails, speccialy on the left of the mean, but this was not significant in terms of the test.
+
+## Question 5
+_Make use of your estimated AR and ADL models to produce a 2-year (8 quarter) forecast for the Unemployment rate that spans until the first quarter of 2016. Report the obtained values._
+
+First, we estimate values for quartely GDP growth. We used the same procedure as the one used for the forecasts in part 1, the `forecast()` function from the package `forecast`.
+
+```{r, message = FALSE, warning = FALSE}
+h = 8
+AR3forecast  <- forecast::forecast(mAR3, h, level = 95)
+vdNewDate    <- c("2014Q2", "2014Q3", "2014Q4", "2015Q1", "2015Q2", "2015Q3", "2015Q4", 
+                  "2016Q1")
+AR3forecast  <- cbind(vdNewDate, data.frame(AR3forecast))
+
+colnames(AR3forecast) <- c("Date", "Forecast", "L95", "H95")
+
+autoplot(forecast::forecast(mAR3, h, level = 95), 
+         main = "12 step ahead forecast using the AR(3) model",
+         xlab = "Quarter", ylab = "Dutch GDP q. growth")
+
+AR3forecast %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+From the forecasted results, we see that the model expects, on average, a gradual increase in GDP growth for the next 2 years. However, it is important to notice that the $95\%$ confidence region goes below the last observed point, covering negative values for the forecasted results. 
+
+Now, we use these forecasted values for GDP growth in the unemployment forecast. We used the approach to compute the forecasts "step-by-step", i.e., we used the estimated model from question (1) to predict what will be the Unemployment for 2014 Q2 using the forecasted value for the GPD. Next, we use this forecasted Unemployment to compute a forecast for 2014 Q3 and so on until 2016 Q1. We couldn't find any reliable source on how to compute the confidence intervals -- more specifically, given that we have the uncertainty from the forecasts for GDP, we were unsure how to compute the confidence bands for this model. The next chunk of code contains the steps used to assemble the data and make the forecast.
+
+```{r, message = FALSE, warning = FALSE}
+
+# Setting up the data frame with GDP growth forecasts
+vdNewDate <- c("2014Q2", "2014Q3", "2014Q4", "2015Q1", 
+               "2015Q2", "2015Q3", "2015Q4", "2016Q1")
+
+dfNewData <- data.frame(vdNewDate, AR3forecast[,2])
+ names(dfNewData) <- names(dfData21[,1:2])
+ dfData22 <- rbind(dfData21[,1:2], dfNewData)
+ dfData22 <- merge(dfData22, dfData21[,3], by = "row.names", all = TRUE)
+ 
+ # This will result in two columns, where the last 8 values
+ # for Unemployment are NA.
+ tsData22 <- xts(dfData22[,3:4], order.by = as.yearqtr(dfData22[,2]), frequency = 4)
+ names(tsData22) <- c("GDP_QGR", "UN_RATE")
+
+# We are doing the forecast step by step
+# Recovers the index for the row where the first forecast of GDP is located 
+indexts          <- which(index(tsData22) == "2014 Q2")
+ADL22_forecast   <- tsData22
+
+for (i in indexts:nrow(tsData22)){
+  ADL22_forecast[i,2] <- coef(mADL31_0) %*% c(1, ADL22_forecast[(i-1), 2], 
+                                              ADL22_forecast[(i-3), 2], ADL22_forecast[(i-1), 1])
+}
+```
+
+The last two observed periods (2013 Q3 and 2014 Q1) as well the $8$ forecast results are displayed in the table below.
+
+```{r, warning = FALSE, message = FALSE, echo = FALSE}
+
+dfADL22_forecast <- data.frame(index(ADL22_forecast) , ADL22_forecast)
+colnames(dfADL22_forecast) <- c("Quarter", "GDP_QGR", "UN_RATE")
+
+tail(dfADL22_forecast[,2:3], n=10) %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+## Question 6
+_Use impulse response functions (IRFs) to analyze two different scenarios for the Dutch un-employment rate:_
+
+_(a) In the `good scenario' the GDP quarterly growth rate is hit by a positive shock of 2%._
+
+_(b) In the `bad scenario' the GDP quarterly growth rate suffers a negative shock of 2%._
+
+_Please use the last observed value of the unemployment rate and gdp growth rate as the origin of your IRFs. In particular, set the origin to -0.37% for GDP and 7.8% for the unemployment rate._
+
+
+

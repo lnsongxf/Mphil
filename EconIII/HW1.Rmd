@@ -1,0 +1,827 @@
+---
+title: "Econometrics III HW - part 1"
+author: "A. Schmidt and P. Assunção"
+date: "10-3-2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+bibliography: references.bib
+---
+
+# Loading packages and helper functions
+
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Verify if a package is already installed, if not, download and install before loading. 
+chooseCRANmirror(graphics = FALSE, ind = 10)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries)
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Prevents code from getting out of the page
+## Works with almost everything except urls and strings.
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Helper function for the histograms (adapted from the source of the forecast package)
+gghistogram01 <- function(x, add.normal=FALSE, add.kde=FALSE, add.rug=TRUE, bins, boundary=0, xlabel = "Series", ylabel = "Number of observations") {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (missing(bins)) {
+      bins <- min(500, grDevices::nclass.FD(na.exclude(x)))
+    }
+    data <- data.frame(x = as.numeric(c(x)))
+    # Initialise ggplot object and plot histogram
+    binwidth <- (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)) / bins
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_histogram(ggplot2::aes(x), data = data, binwidth = binwidth, boundary = boundary) +
+      # ggplot2::xlab(deparse(substitute(x)))
+      ggplot2::xlab(xlabel) +
+      ggplot2::ylab(ylabel) +
+      ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8))
+    # Add normal density estimate
+    if (add.normal || add.kde) {
+      xmin <- min(x, na.rm = TRUE)
+      xmax <- max(x, na.rm = TRUE)
+      if (add.kde) {
+        h <- stats::bw.SJ(x)
+        xmin <- xmin - 3 * h
+        xmax <- xmax + 3 * h
+      }
+      if (add.normal) {
+        xmean <- mean(x, na.rm = TRUE)
+        xsd <- sd(x, na.rm = TRUE)
+        xmin <- min(xmin, xmean - 3 * xsd)
+        xmax <- max(xmax, xmean + 3 * xsd)
+      }
+      xgrid <- seq(xmin, xmax, l = 512)
+      if (add.normal) {
+        df <- data.frame(x = xgrid, y = length(x) * binwidth * stats::dnorm(xgrid, xmean, xsd))
+        p <- p + ggplot2::geom_line(ggplot2::aes(df$x, df$y), col = "#ff8a62")
+      }
+      if (add.kde) {
+        kde <- stats::density(x, bw = h, from = xgrid[1], to = xgrid[512], n = 512)
+        p <- p + ggplot2::geom_line(ggplot2::aes(x = kde$x, y = length(x) * binwidth * kde$y), col = "#67a9ff")
+      }
+    }
+    if (add.rug) {
+      p <- p + ggplot2::geom_rug(ggplot2::aes(x))
+    }
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# ACF plot function adapted from the `forecast` package
+autoplot.acf01 <- function(object, ci=0.95, title = "Dutch quaterly GDP growth", ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "acf")) {
+      stop("autoplot.acf requires a acf object, use object=object")
+    }
+ 
+    acf <- `dimnames<-`(object$acf, list(NULL, object$snames, object$snames))
+    lag <- `dimnames<-`(object$lag, list(NULL, object$snames, object$snames))
+ 
+    data <- as.data.frame.table(acf)[-1]
+    data$lag <- as.numeric(lag)
+ 
+    if (object$type == "correlation") {
+      data <- data[data$lag != 0, ]
+    }
+ 
+    # Initialise ggplot object
+    p <- ggplot2::ggplot(
+      ggplot2::aes_(x = ~lag, xend = ~lag, y = 0, yend = ~Freq),
+      data = data
+    )
+    p <- p + ggplot2::geom_hline(yintercept = 0)
+ 
+    # Add data
+    p <- p + ggplot2::geom_segment(lineend = "butt", ...)
+ 
+    # Add ci lines (assuming white noise input)
+    ci <- qnorm((1 + ci) / 2) / sqrt(object$n.used)
+    p <- p + ggplot2::geom_hline(yintercept = c(-ci, ci), colour = "blue", linetype = "dashed")
+ 
+    # Add facets if needed
+    if(any(dim(object$acf)[2:3] != c(1,1))){
+      p <- p + ggplot2::facet_grid(
+        as.formula(paste0(colnames(data)[1:2], collapse = "~"))
+      )
+    }
+ 
+    # Prepare graph labels
+    if (!is.null(object$ccf)) {
+      ylab <- "CCF"
+      ticktype <- "ccf"
+      #main <- paste("Series:", object$snames)
+      main <- title
+      nlags <- round(dim(object$lag)[1] / 2)
+    }
+    else if (object$type == "partial") {
+      ylab <- "PACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else {
+      ylab <- NULL
+    }
+ 
+    # Add seasonal x-axis
+    # Change ticks to be seasonal and prepare default title
+    if (!is.null(object$tsp)) {
+      freq <- object$tsp[3]
+    } else {
+      freq <- 1
+    }
+    if (!is.null(object$periods)) {
+      periods <- object$periods
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+    p <- p + ggplot2::scale_x_continuous(breaks = seasonalaxis(
+      freq,
+      nlags, type = ticktype, plot = FALSE
+    ), minor_breaks = minorbreaks)
+    p <- p + ggAddExtras(ylab = ylab, xlab = "Lag", main = main)
+    p <- p + ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8), plot.title = element_text(size=10))
+    return(p)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggAcf <- function(x, lag.max = NULL,
+                  type = c("correlation", "covariance", "partial"),
+                  plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Acf)
+  object <- eval.parent(cl)
+  object$tsp <- tsp(x)
+  object$periods <- attributes(x)$msts
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggPacf <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  object <- Acf(x, lag.max = lag.max, type = "partial", na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggCcf <- function(x, y, lag.max=NULL, type=c("correlation", "covariance"),
+                  plot=TRUE, na.action=na.contiguous, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Ccf)
+  object <- eval.parent(cl)
+  object$snames <- paste(deparse(substitute(x)), "&", deparse(substitute(y)))
+  object$ccf <- TRUE
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+autoplot.mpacf <- function(object, ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "mpacf")) {
+      stop("autoplot.mpacf requires a mpacf object, use object=object")
+    }
+    if (!is.null(object$lower)) {
+      data <- data.frame(Lag = 1:object$lag, z = object$z, sig = (object$lower < 0 & object$upper > 0))
+      cidata <- data.frame(Lag = rep(1:object$lag, each = 2) + c(-0.5, 0.5), z = rep(object$z, each = 2), upper = rep(object$upper, each = 2), lower = rep(object$lower, each = 2))
+      plotpi <- TRUE
+    }
+    else {
+      data <- data.frame(Lag = 1:object$lag, z = object$z)
+      plotpi <- FALSE
+    }
+    # Initialise ggplot object
+    p <- ggplot2::ggplot()
+    p <- p + ggplot2::geom_hline(ggplot2::aes(yintercept = 0), size = 0.2)
+ 
+    # Add data
+    if (plotpi) {
+      p <- p + ggplot2::geom_ribbon(ggplot2::aes_(x = ~Lag, ymin = ~lower, ymax = ~upper), data = cidata, fill = "grey50")
+    }
+    p <- p + ggplot2::geom_line(ggplot2::aes_(x = ~Lag, y = ~z), data = data)
+    if (plotpi) {
+      p <- p + ggplot2::geom_point(ggplot2::aes_(x = ~Lag, y = ~z, colour = ~sig), data = data)
+    }
+ 
+    # Change ticks to be seasonal
+    freq <- frequency(object$x)
+    msts <- is.element("msts", class(object$x))
+ 
+    # Add seasonal x-axis
+    if (msts) {
+      periods <- attributes(object$x)$msts
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+ 
+    p <- p + ggplot2::scale_x_continuous(
+      breaks = seasonalaxis(frequency(object$x), length(data$Lag), type = "acf", plot = FALSE),
+      minor_breaks = minorbreaks
+    )
+ 
+    if (object$type == "partial") {
+      ylab <- "PACF"
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+    }
+ 
+    p <- p + ggAddExtras(ylab = ylab)
+ 
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Other functions from the forecast package
+#####
+
+# Make nice horizontal axis with ticks at seasonal lags
+# Return tick points if breaks=TRUE
+seasonalaxis <- function(frequency, nlags, type, plot=TRUE) {
+  # List of unlabelled tick points
+  out2 <- NULL
+  # Check for non-seasonal data
+  if (length(frequency) == 1) {
+    # Compute number of seasonal periods
+    np <- trunc(nlags / frequency)
+    evenfreq <- (frequency %% 2L) == 0L
+ 
+    # Defaults for labelled tick points
+    if (type == "acf") {
+      out <- pretty(1:nlags)
+    } else {
+      out <- pretty(-nlags:nlags)
+    }
+ 
+    if (frequency == 1) {
+      if (type == "acf" && nlags <= 16) {
+        out <- 1:nlags
+      } else if (type == "ccf" && nlags <= 8) {
+        out <- (-nlags:nlags)
+      } else {
+        if (nlags <= 30 && type == "acf") {
+          out2 <- 1:nlags
+        } else if (nlags <= 15 && type == "ccf") {
+          out2 <- (-nlags:nlags)
+        }
+        if (!is.null(out2)) {
+          out <- pretty(out2)
+        }
+      }
+    }
+    else if (frequency > 1 &&
+      ((type == "acf" && np >= 2L) || (type == "ccf" && np >= 1L))) {
+      if (type == "acf" && nlags <= 40) {
+        out <- frequency * (1:np)
+        out2 <- 1:nlags
+        # Add half-years
+        if (nlags <= 30 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((1:np) - 0.5))
+        }
+      }
+      else if (type == "ccf" && nlags <= 20) {
+        out <- frequency * (-np:np)
+        out2 <- (-nlags:nlags)
+        # Add half-years
+        if (nlags <= 15 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((-np:np) + 0.5))
+        }
+      }
+      else if (np < (12 - 4 * (type == "ccf"))) {
+        out <- frequency * (-np:np)
+      }
+    }
+  }
+  else {
+    # Determine which frequency to show
+    np <- trunc(nlags / frequency)
+    frequency <- frequency[which(np <= 16)]
+    if (length(frequency) > 0L) {
+      frequency <- min(frequency)
+    } else {
+      frequency <- 1
+    }
+    out <- seasonalaxis(frequency, nlags, type, plot = FALSE)
+  }
+  if (plot) {
+    axis(1, at = out)
+    if (!is.null(out2)) {
+      axis(1, at = out2, tcl = -0.2, labels = FALSE)
+    }
+  }
+  else {
+    return(out)
+  }
+}
+
+
+ggPacf01 <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, type = "correlation", ...) {
+  object <- Acf(x, lag.max = lag.max, type = type, na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+
+
+ggAddExtras <- function(xlab=NA, ylab=NA, main=NA) {
+  dots <- eval.parent(quote(list(...)))
+  extras <- list()
+  if ("xlab" %in% names(dots) || is.null(xlab) || any(!is.na(xlab))) {
+    if ("xlab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(dots$xlab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(paste0(xlab[!is.na(xlab)], collapse = " "))
+    }
+  }
+  if ("ylab" %in% names(dots) || is.null(ylab) || any(!is.na(ylab))) {
+    if ("ylab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(dots$ylab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(paste0(ylab[!is.na(ylab)], collapse = " "))
+    }
+  }
+  if ("main" %in% names(dots) || is.null(main) || any(!is.na(main))) {
+    if ("main" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(dots$main)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(paste0(main[!is.na(main)], collapse = " "))
+    }
+  }
+  if ("xlim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::xlim(dots$xlim)
+  }
+  if ("ylim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::ylim(dots$ylim)
+  }
+  return(extras)
+}
+ 
+ggtsbreaks <- function(x) {
+  # Make x axis contain only whole numbers (e.g., years)
+  return(unique(round(pretty(floor(x[1]):ceiling(x[2])))))
+}
+ 
+```
+
+```{r, message= FALSE, warning = FALSE, echo = FALSE}
+# Function to build a summary descriptives table
+## This can be generalized for when we have several columns
+desc <- function(x) {
+  n       <- length(x)
+  minimum <- min(x, na.rm = TRUE)
+  first_q <- quantile(x, 0.25, na.rm = TRUE)
+  media   <- mean(x, na.rm = TRUE)
+  mediana <- median(x, na.rm = TRUE)
+  third_q <- quantile(x, 0.75, na.rm = TRUE)
+  maximum <- max(x, na.rm = TRUE)
+  std     <- sd(x, na.rm = TRUE)
+    return(list(n = n, minimum = minimum, first_quar = first_q, media = media, mediana = mediana, third_quar = third_q, maximum = maximum, std = std))
+}
+
+```
+
+# Assignment 1
+
+## Pendências
+
+\begin{itemize}
+\item \sout{Adicionar o algoritmo de estimação}
+\item \sout{Adicionar o algoritmo de previsão}
+\item \sout{Arrumar o layout das tabelas de descritivas}
+\item \sout{Arrumar as funções de histograma e autocorrelação}
+\item \sout{Colocar referências}
+\item \sout{Arrumar a última questão para não estimar incluindo os dados extras.}
+\item (caso dê tempo) Colocar os resultados dos modelos em uma só tabela
+\item (caso dê tempo) Deixar os gráficos das previsões como o último gráfico
+\item Limpar comentários (apenas no final)
+\item Quebrar as linhas de código
+\end{itemize}
+
+**OBS:** Para instalar o latex (caso não tenha instalado no computador e só quer usar pro R Studio), podes usar o seguinte: `install.packages("tinytex")` e `tinytex::install_tinytex()` Fontehttps://bookdown.org/yihui/rmarkdown/installation.html
+
+## Introduction
+
+_Let us go back in time to the first quarter of 2009. The world economy has just been hit by a major financial crisis. In just one year, the Dutch quarterly GDP growth rate has fallen from 1.4%, in the first quarter of 2008, to -2.7%, in the first quarter of 2009. In the first quarter of 2009, at the peak of the economic recession, suppose that government officials ask you to describe the dynamics of the Dutch GDP quarterly growth rate and deliver a forecast for the two years ahead. The available sample of observed GDP growth rates spans from the second quarter of 1987 to the first quarter of 2009._
+
+## Importing and checking data
+
+Import using read.csv2() function (remember to change the directory name - in VU computers you can only read from the downloads folder).
+
+```{r} 
+#dfData01 <- read.csv2("C:\\Users\\palom\\OneDrive\\Mestrado\\Tinbergen Institute\\Material\\Y1 - Block 4\\Econometrics III\\HW_1\\data_assign_p1.csv", sep = ",", dec = ".", header = TRUE)
+
+dfData01 <- read.csv2("https://raw.githubusercontent.com/aishameriane/Mphil/master/EconIII/data_assign_p1.csv?token=AAVGJTT7NBFAQSTHXZ6A2US6QMGLY", sep = ",", dec = ".", header = TRUE)
+```
+
+Check if everything is ok with the dataset: header and tail and summary statistics to check for missing data/outliers. We can see from the head and tail that the Data set indeed goes until the second quarter of 2009 and at least those observations seems to be completely filled with adequate ranges.
+
+```{r,echo = FALSE}
+cbind(head(dfData01), tail(dfData01)) %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The next table has the descriptive statistics for the column that contains the values of GDP Growth. We can see that indeed we don't have any missing information and all values are numeric (there are no problems of formatting). 
+
+```{r, echo = FALSE}
+# Descriptives
+descriptives     <- matrix(NA, nrow = 8, ncol = (ncol(dfData01)-1))
+rownames(descriptives) <- c("Observations", "Minimum", "1st quartile",
+                      "Mean", "Median",  "3rd quartile", "Maximum",
+                      "Desv. Pad.")
+
+for (i in 1:8){
+  descriptives[i, 1] <- round(as.numeric(desc(dfData01[,2])[i]),4)
+}
+
+descriptives[1,] <- as.integer(descriptives[1,])
+names(descriptives) <- colnames(dfData01[2])
+descriptives <- data.frame(descriptives)
+
+descriptives %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Transform into a time series object. A nice tutorial can be seen here: https://www.datacamp.com/community/blog/r-xts-cheat-sheet. This is useful to make the graphs next. 
+tsData01 <- xts(dfData01[,2], order.by = as.yearqtr(dfData01[,1]), frequency = 4)
+```
+
+## Question 1
+
+_Plot the sample of Dutch GDP quarterly growth rates that you have at your disposal. Report the 12-period sample ACF and PACF functions and comment on their shape. What does the sample ACF tells you about the dynamic properties of GDP quarterly growth rates?_
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Making the graph
+plotSeries <- autoplot(tsData01) + 
+  theme_bw() + 
+  geom_line(color = "dark blue") + 
+  labs(title = "Dutch quarterly GDP growth - 1987Q2 to 2009Q1", x = "Date", y="GDP growth")
+
+p0 <- gghistogram01(tsData01, add.kde=TRUE, xlabel = "Dutch GDP quaterly growth", ylabel = "")
+p1 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 12, type = "correlation"))
+p2 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 12, type = "partial"))
+grid.arrange(plotSeries, grid.arrange(p1, p2, nrow = 1), nrow = 2)
+```
+
+**Comments on the series:** From the graph of the series (top graph in the picture above), the series of the Dutch GDP quarterly growth visually doesn't seem to be stationary, since it looks like the volatility in the 90s is smaller than the volatility in the 2000s. Also, there is an apparent strutural break in 2008, which most likely is associated with the financial crisis.
+
+**Comments on the ACF/PACF graphs**: Since the ACF is within the confidence interval (represented by the horizontal blue lines), there is no evidence of autocorrelation between the GDP growth from time $t=0$ and $t=h$, for $h = 2, \ldots, 12$ (where 12 lags represents 3 years for quaterly data), i.e., the ACF is statistically insignificant (for a 5% significance level) from lag $h=2$ onward, when considering a bandwitch of 12. Note, however, that autocorrelation in the first lag is very close to the  upper bound of the confidence interval, which offers evidence for the existance of some relevant autocorrelation between the current quartely GDP growth and the growth in the period just before. The same applies for the PACF.
+
+*PALOMA:* Acho que aqui seria bom ressaltar que não tem autocorrelação, com excessão do lag 1 (se foi isso que vc quis dizer, desculpe). Talvez algo como "Since the ACF is mostly within the confidence interval (represented by the horizontal blue lines), there is little evidence of autocorrelation between the GDP growth from time $t$ up until $t+12$ (3 years for quaterly data), since ACF is statistically insignificant (for a 5% significance level). Note, however, that autocorrelation in the first lag is very close to the  upper bound of the confidence interval, which offers evidence for the existance of some relevant autocorrelation between the current quartely GDP growth and the growth in the period just before. The same applies for the PACF" **Aisha**: Eu quis dizer isso, mas depois que li seu comentário voltei no que eu escrevi e realmente não ficou claro. Copiei a sua sugestão e adaptei um pouco o texto pra tentar deixar coerente, mas é bom dar uma última olhada quando discutirmos.
+
+*PERGUNTA:* (Aisha) Mantemos o histograma nessa aqui? Uma alternativa seria ao invés do histograma colocar o gráfico da série. *RESPOSTA:* (Paloma) Acho que como não pede o histograma, não tem necessidade colocar. Com "gráfico" da série, vc quer dizer algo como o gráfico que tem mais acima? *RESPOSTA:* (Aisha) Sim, pensei em se tirar o histograma então dá pra colocar o gráfico da série, já que pede a ACF e PACF tudo na mesma questão. Eu coloquei agora como pensei pra vc dar uma olhada como fica. Mudei um pouco a ordem do texto já que os gráficos agora estão todos juntos.
+
+To further investigate the apparent difference in the volatility behavior, we have below the comparison for the descriptive statistics of the GDP Growth from Q1 1990 to Q4 1996 in the first column and the same descriptives for the series from Q1 2000 to Q4 2006. Notice that we are not including the period where the structural break occured, so both columns should have near similar behaviors. However, we observe that indeed there is a discrepancy on the standard deviations, which is consistent to the visual inspection in the graph.
+
+We will not in here make a model considering that the series could possibly be non-stationary, but it is important to have in mind that some of the techniques we saw in class only would apply assuming stability of the AR coefficients.
+
+```{r, echo = FALSE}
+# 90's versus 00's data
+## From 1990Q1 to 1996Q4 and from 2000Q1 to 2006Q4
+descriptives00     <- matrix(NA, nrow = 8, ncol = (ncol(dfData01)-1)*2)
+rownames(descriptives00) <- c("Observations", "Minimum", "1st quartile",
+                      "Mean", "Median",  "3rd quartile", "Maximum",
+                      "Desv. Pad.")
+
+for (i in 1:8){
+  descriptives00[i, 1] <- round(as.numeric(desc(dfData01[12:39,2])[i]),4)
+  descriptives00[i, 2] <- round(as.numeric(desc(dfData01[52:79,2])[i]),4)
+} 
+
+descriptives00[1,] <- as.integer(descriptives00[1,])
+#names(descriptives00) <- colnames(dfData01[2])
+colnames(descriptives00) <- c("90-96", "00-06")
+descriptives00 <- data.frame(descriptives00)
+
+descriptives00 %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+## Question 2
+
+_Estimate an AR(p) model for the same time-series. Please use the general-to-specific modeling approach by starting with a total p = 4 lags and removing insignificant lags sequentially. Report the final estimated AR(p) model, working at a 5% significance level. Comment on the estimated coefficients. What do these coefficients tell you about the dynamic properties of the GDP quarterly growth rate?_
+
+**Comments about the estimation procedure**: We opted by a model including the intercept because from the graphic in the previous items it is clear that the series is not centered at zero.
+
+We used the function `Arima()` from the `forecast` package (source code available at: https://www.rdocumentation.org/packages/forecast/versions/8.11/source), which uses the same estimation procedure as the `arima()` function that comes with the `stats` package (source code available here: https://svn.r-project.org/R/trunk/src/library/stats/R/arima.R). The estimation procedure, roughly speaking, is based on the maximum likelihood method. Since this is a numerical procedure (i.e., it requires a numerical optmization), there is a need for an initial value. The package uses the conditional sum of squares to initialize the algorithm. We tested the estimation routine with and without this initialization method and the results were the same, so we opted for having the initial condition for better performance in terms of computational time (although for this very simple model this doesn't make any significant difference).
+
+As for the maximum likelihood procedure, it is done by filtering. More specifically, the model is treated as in its state-space representation and the Kalman filter is applied. Again, very roughly speaking, the Kalman filter is used for linear and gaussian latent models where the observation today is used to "predict" the observation tomorrow. This is made sequentially for the entire series using the bayes rule (in some sense this can be seen as a bayesian update procedure). Further details on the package procedure can be found at https://rdrr.io/r/stats/arima.html and the Kalman filter details can be found in @durbin.
+
+### First model: AR(4)
+
+```{r, message = FALSE, warning = FALSE}
+  mAR4  <- Arima(tsData01, order = c(4,0,0))
+  
+  AR4coef           <- tidy(coeftest(mAR4), stringsAsFactors = FALSE) 
+  AR4coef           <- cbind(AR4coef[, 1], round(AR4coef[, 2:5], digits = 2))
+  colnames(AR4coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR4coef[,1] <- c("Lag 1", "Lag 2", "Lag 3", "Lag 4", "Intercept")
+  
+  AR4coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Second model: AR(3)
+
+```{r, message = FALSE, warning = FALSE} 
+  
+  mAR3              <- Arima(tsData01, order = c(3,0,0))
+
+  AR3coef           <- tidy(coeftest(mAR3), stringsAsFactors = FALSE) 
+  AR3coef           <- cbind(AR3coef[, 1], round(AR3coef[, 2:5], digits = 2))
+  colnames(AR3coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR3coef[,1]       <- c("Lag 1", "Lag 2", "Lag 3", "Intercept")
+  
+  AR3coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Third model: AR(2)
+
+```{r, message = FALSE, warning = FALSE} 
+  
+  mAR2              <- Arima(tsData01, order = c(2,0,0))
+
+  AR2coef           <- tidy(coeftest(mAR2), stringsAsFactors = FALSE) 
+  AR2coef           <- cbind(AR2coef[, 1], round(AR2coef[, 2:5], digits = 2))
+  colnames(AR2coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR2coef[,1]       <- c("Lag 1", "Lag 2", "Intercept")
+  
+  AR2coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Fourth model: AR(1)
+
+```{r, message = FALSE, warning = FALSE} 
+  
+  mAR1              <- Arima(tsData01, order = c(1,0,0))
+
+  AR1coef           <- tidy(coeftest(mAR1), stringsAsFactors = FALSE) 
+  AR1coef           <- cbind(AR1coef[, 1], round(AR1coef[, 2:5], digits = 2))
+  colnames(AR1coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR1coef[,1]       <- c("Lag 1", "Intercept")
+  
+  AR1coefpvalue     <- AR1coef$`P-Value`[1]
+  AR1coefsderror    <- AR1coef$`Std. Error`[1]
+  
+  AR1coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Comments on the results:** Keeping only the first lag in the model is in line with the results from the ACF/PACF, and the relationship between the previous period with current period for economic series was reported in @nelson1982 for the US Economy. The coefficient suggests a positive effect of `r AR1coef$Estimate[1]` (se = `r AR1coefsderror`; p-value= `r AR1coefpvalue`) of GDP growth in previous quarter on the growth of current quarter. Thus, shocks that occur in the previous quarter tend to persist until the current quarter. Note, however, that the sample ends around the financial crisis of 2008, which might lead to some inconsistency over the results, since we observe a longer period of sequential decline in the economic activity by the end of the sample, i.e., it seems that the persistency of the shocks in the AR model changes its behavior around 2008. A possibility would be re-estimating the model considering maybe the first half of the sample and another estimation considering only the second half of the sample or includind a dummy variable for the period pre/post crisis (which might not be ideal given the frequency of the data and low availability) or estimate a dynamic model with time-varying coefficients (i.e., include a stochastic variation in either the coefficients or the volatility).
+
+## Question 3
+
+_Check the regression residuals of the estimated AR(p) model for autocorrelation by plotting the estimated residual ACF function. Does the model seem well specified?_
+
+```{r, message = FALSE, warning = FALSE} 
+  mRes1 <- mAR1$residuals
+  
+  p1 <- gghistogram01(tsData01, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR(1) model", ylabel = "")
+  p2 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 12, type = "correlation"), title = "Residuals from the AR(1) model")
+  
+  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(88, 0, 1))
+  p3 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+  grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
+  
+  JBtest <- jarque.bera.test(mRes1)
+  KStest <- ks.test(mRes1, pnorm)
+```
+
+*Comments on the results:* The ACF graph show that all lags are whithin the 5% confidence interval, as we expected. As sanity check, we ran both a KS and a Jarque-Bera test for normality to check the residuals. The hypothesis of both tests are:
+
+*    *H0 :* The data comes from a standard normal distribution.
+*    *H1 :* The data does not comes from a standard normal distribution.
+
+Since the p-value for the KS test is higher than $5%$ (KS statistic = `r round(KStest$statistic,4)`; p-value = `r round(KStest$p.value,4)`), we cannot reject the hypothesis of normality of the residuals, consistent with the QQ plot, where all sample points are inside the confidence bands. 
+
+However, when looking at the histogram of the residuals the series exhibits behavior compatible to the presence of heavy tails. The Jarque Bera test rejects the null hypothesis of normality (JB statistic = `r round(JBtest$statistic,4)`; p-value $\approx$ `r round(JBtest$p.value,6)`). We opted by not follow the trail of the non-normality of the residuals because the JB test tends to be overly conservative for small sample sizes (even with a sample size of 88, which is our case). 
+
+## Question 4
+
+_Make use of your estimated AR model to produce a 2-year (8 quarters) forecast for the Dutch GDP quarterly growth rate that spans until the first quarter of 2011. Report the values you obtained and explain how you derived them._
+
+*Comments about the estimation procedure*: For this part of the exercise, we are using the `forecast()` function of the package `forecast` [@hyndman2008]. This is a general package (that is suitable for a large range of models, not just ARMA), so the function itself calls another functions depending on the type of object used as argument. The forecast is done via exponential smoothing, using the function `ets()` (source code: https://www.rdocumentation.org/packages/forecast/versions/8.11/source), whenever the number of lags is larger than 3. Broadly speaking, the one period ahead forecast is written in terms of a level, a seasonal and a trend component, where the parameters for each component are estimated internally by the method. Similarly to what is done in the estimation part, the model is written in the state space form and in the case of a linear model (such as ours), the algorithm runs iteratively for each step.
+
+This is a more general procedure than the one studied in our classes, but given the fact that we only studied methods assuming that the true GDP is known (i.e., we only incorporated the uncertainty regarding the error term, not the uncertainty regarding the correct specification of the model neither the uncertainty about the parameter's estimates), using the functions of the package seemed the correct modeling choice.
+
+**Aisha**: Esse foi o máximo que deu para escrever, porque é tão geral o método que acaba sendo difícil entrar em todos os detalhes. Se quiser dar uma olhada nos links que consultei, eles estão aqui:
+https://www.rdocumentation.org/packages/forecast/versions/8.11/source
+https://www.jstatsoft.org/article/view/v027i03
+https://cran.r-project.org/web/packages/forecast/vignettes/JSS2008.pdf
+
+
+```{r}
+h = 8
+AR1forecast  <- forecast(mAR1, h, level = 95)
+vdNewDate    <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", "2011Q1")
+AR1forecast  <- cbind(vdNewDate, data.frame(AR1forecast))
+
+colnames(AR1forecast) <- c("Date", "Forecast", "L95", "H95")
+
+AR1forecast %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+autoplot(forecast(mAR1, h, level = 95), main = "12 step ahead forecast using the AR(1) model", xlab = "Quarter", ylab = "Dutch GDP q. growth")
+```
+
+*Aisha:* Esse gráfico fiz usando uma função automática. Vou deixar assim por enquanto (é melhor que nada) e se der tempo no final a gente faz melhor.
+
+## Question 5
+
+*Suppose that the innovations in your AR model are iid Gaussian. Produce 95% confidence intervals for your 2-year forecast. Furthermore, comment on the following statement issued by government officials: "_Given the available GDP data, we believe that there is a low probability that the Dutch GDP growth rate will remain negative in the second quarter of 2009_."*
+
+**Comments on the question**: Given the 95% confidence interval for our estimate of the Dutch GDP in 2009 Q2 (CI= (`r round(AR1forecast[1,3],4)`;`r  round(AR1forecast[1,4],4)`)), it is hard to make assertions on the probability of the GDP growth remaining negative in the second quarter of 2009. Basically what the confidence interval says is that we can have either negative or positive values for the GDP. However, the point estimate is equal to `r  round(AR1forecast[1,2],4)`, which might have mislead the policy maker. Another possibility is that the officials mistakenly interpreted the confidence interval: since it is shifted to the right (with respect to zero), they might have thought that this was a sign favouring positive growth. But this is not the correct interpretation. The interval is for the point estimate. 
+
+In fact, our point estimate is not significanly different from zero: the corresponding hypothesis test to check if the `r round(AR1forecast[1,2],4)` is equal to zero with 5% significance would point towards not rejecting the null hypothesis.
+
+## Question 6
+
+_Do you find the assumption of iid Gaussian innovations reasonable? How does this affect your answer to the previous question_?_
+
+*Comment*: Given the ACF behaviour and the KS-test performed in the previous items, it seems reasonable to accept the hypothesis of iid Gaussian innovations. However, if this is not true (and could be false, for example, under the presence of heavy tails), the confidence intervals for our predictions would be higher and the uncertainty around the estimate would increase.
+
+## Question 7
+
+_Suppose that 2 years have passed since you delivered your forecasts to the government, in the first quarter of 2009. Compare your point forecasts and confidence bounds with the following actual observed values for the 12 quarters from 2009q1 to 2011q1. Please comment on the accuracy of your forecasts._
+
+### Appending new data into old data
+
+```{r, message = FALSE, warning = FALSE}
+ vdNewDate <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", "2011Q1")
+ vdNewGDP  <- c(-1.63, 0.28, 0.33, 0.66, 1.59, 0.51, 0.71, 0.81)
+ dfNewData <- data.frame(vdNewDate, vdNewGDP)
+ names(dfNewData) <- names(dfData01)
+ dfData02 <- rbind(dfData01, dfNewData)
+ tsData02 <- xts(dfData02[,2], order.by = as.yearqtr(dfData02[,1]), frequency = 4)
+ 
+## Making the graph
+  autoplot(tsData02) + 
+  theme_bw() + 
+  geom_line(color = "dark blue") + 
+  labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", y="GDP growth")
+  
+ # Merging the data with the forecast
+  
+ dfCompare <- cbind(dfNewData, AR1forecast[,c(2,3,4)])
+ 
+  dfCompare %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  # Doing the graph
+  ggplot(dfData02, aes(as.yearqtr(obs), GDP_QGR)) +
+    geom_line(color = "dark blue") +
+    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=Forecast)) +
+    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95, ymax=H95), alpha=0.3) +
+    theme_bw() +
+    labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", y="GDP growth")
+  
+  
+```
+
+**Comments:** The point forecasts, with exception of 2009 Q2 and 2010 Q2, are above the true realizations. However, the realizations are within the 95% confidence bands, which shows that there is no significant evidence of the forecasts and the true realizations being different. Even though, this result must be taken with cautious, because as mentioned before, the confidence intervals for the predictions are quite large and range from positive to negative values.
+
+_COMENTÁRIO_ (Aisha) Coloquei o gráfico e tentei fazer uma análise, mas não sei muito mais o que escrever aqui.
+
+## Question 8
+
+_Repeat question 2 above, but this time using a 10% significance level for the general-to-specific modeling approach. Use the newly estimated model to produce a 2-year (8 quarters) point forecast of the Dutch GDP quarterly growth rate. Comment on the accuracy of the forecast generated by the newly estimated AR model. Is it better than the model you estimated before?_
+
+*Comments:* In this case, we would keep the model with three lags, removing the intermediate lag. More specifically, since the coefficient for the 3rd lag is positive and significative, we observe a medium run effect on the current GDP. As for the second lag, it is not significative at a 10% significance level and was removed. The first lag continues significant in this model and could be seen as a short run effect.
+
+Overall, by using a larger significance level in the model we allow the existence of medium and short run effects on the current GDP growth.
+
+```{r, message = FALSE, warning = FALSE} 
+  mAR3              <- Arima(tsData01, order = c(3,0,0), fixed = c(NA, 0, NA, NA))
+
+  AR3coef           <- tidy(coeftest(mAR3), stringsAsFactors = FALSE) 
+  AR3coef           <- cbind(AR3coef[, 1], round(AR3coef[, 2:5], digits = 2))
+  colnames(AR3coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  AR3coef[,1]       <- c("Lag 1", "Lag 3", "Intercept")
+  
+  AR3coef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### Forecasting using AR(3) model
+
+```{r, message = FALSE, warning = FALSE}
+h = 8
+AR3forecast  <- forecast(mAR3, h, level = 95)
+vdNewDate    <- c("2009Q2", "2009Q3", "2009Q4", "2010Q1", "2010Q2", "2010Q3", "2010Q4", "2011Q1")
+AR3forecast  <- cbind(vdNewDate, data.frame(AR3forecast))
+
+colnames(AR3forecast) <- c("Date", "Forecast", "L95", "H95")
+
+AR3forecast %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+autoplot(forecast(mAR3, h, level = 95), main = "12 step ahead forecast using the AR(3) model", xlab = "Quarter", ylab = "Dutch GDP q. growth")
+
+# Merging the data with the new forecast
+ 
+ colnames(dfCompare) <-  c("obs", "GDP_QGR", "ForecastAR1", "L95AR1", "H95AR1")
+ dfCompare <- cbind(dfCompare, AR3forecast[,c(2,3,4)])
+ colnames(dfCompare) <-  c("obs", "GDP_QGR", "ForecastAR1", "L95AR1", "H95AR1", "ForecastAR3", "L95AR3", "H95AR3")
+ 
+  dfCompare %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  # Doing the graph
+  ggplot(dfData02, aes(as.yearqtr(obs), GDP_QGR)) +
+    geom_line(color = "dark blue") +
+    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=ForecastAR1, color = "AR1"), color = "coral") +
+    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95AR1, ymax=H95AR1, color = "AR1"), alpha=0.3, fill = "coral") +
+    geom_point(data = dfCompare, aes(x=as.yearqtr(obs), y=ForecastAR3, color = "AR3"), color = "skyblue4") +
+    geom_ribbon(data= dfCompare, aes(x = as.yearqtr(obs), ymin=L95AR3, ymax=H95AR3, color = "AR3"), alpha=0.3, fill = "skyblue") +
+    theme_bw() +
+    labs(title = "Dutch quarterly GDP growth - 1987Q2 to 20011Q1", x = "Date", y="GDP growth", color = "Model")
+```
+
+*Comments on the forecast results:* As mentioned before, by allowing for further lags, we incorporate a medium run aspect to the model, in addition to the short run component (first lag). As a result, the forecasted points are able to better behave in an ascending trajectory, instead acommodating in a certain average level as the forecasts with the AR1 model. That is, the GDP quartely growth shows a more gradual recovery from the 2008 crisis, which resembles more the observed data from the second quarter of 2009 onwards. In terms of the size of confidence intervals there were no visible changes, as can be seen in the graph.
+
+
+# References

@@ -1,0 +1,1178 @@
+---
+title: "Econometrics III HW - part 3"
+author: "A. Schmidt and P. Assunção"
+date: "24-3-2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+bibliography: references.bib
+---
+
+# Loading packages and helper functions
+
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
+The full code is available in: 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Verify if a package is already installed, if not, download and install before loading. 
+chooseCRANmirror(graphics = FALSE, ind = 10)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries, lubridate, scales, tictoc, stringr, tidyr, urca)
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Prevents code from getting out of the page
+## Works with almost everything except urls and strings.
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Helper function for the histograms (adapted from the source of the forecast package)
+gghistogram01 <- function(x, add.normal=FALSE, add.kde=FALSE, add.rug=TRUE, bins, boundary=0, xlabel = "Series", ylabel = "Number of observations") {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (missing(bins)) {
+      bins <- min(500, grDevices::nclass.FD(na.exclude(x)))
+    }
+    data <- data.frame(x = as.numeric(c(x)))
+    # Initialise ggplot object and plot histogram
+    binwidth <- (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)) / bins
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_histogram(ggplot2::aes(x), data = data, binwidth = binwidth, boundary = boundary) +
+      # ggplot2::xlab(deparse(substitute(x)))
+      ggplot2::xlab(xlabel) +
+      ggplot2::ylab(ylabel) +
+      ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8))
+    # Add normal density estimate
+    if (add.normal || add.kde) {
+      xmin <- min(x, na.rm = TRUE)
+      xmax <- max(x, na.rm = TRUE)
+      if (add.kde) {
+        h <- stats::bw.SJ(x)
+        xmin <- xmin - 3 * h
+        xmax <- xmax + 3 * h
+      }
+      if (add.normal) {
+        xmean <- mean(x, na.rm = TRUE)
+        xsd <- sd(x, na.rm = TRUE)
+        xmin <- min(xmin, xmean - 3 * xsd)
+        xmax <- max(xmax, xmean + 3 * xsd)
+      }
+      xgrid <- seq(xmin, xmax, l = 512)
+      if (add.normal) {
+        df <- data.frame(x = xgrid, y = length(x) * binwidth * stats::dnorm(xgrid, xmean, xsd))
+        p <- p + ggplot2::geom_line(ggplot2::aes(df$x, df$y), col = "#ff8a62")
+      }
+      if (add.kde) {
+        kde <- stats::density(x, bw = h, from = xgrid[1], to = xgrid[512], n = 512)
+        p <- p + ggplot2::geom_line(ggplot2::aes(x = kde$x, y = length(x) * binwidth * kde$y), col = "#67a9ff")
+      }
+    }
+    if (add.rug) {
+      p <- p + ggplot2::geom_rug(ggplot2::aes(x))
+    }
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+# ACF plot function adapted from the `forecast` package
+autoplot.acf01 <- function(object, ci=0.95, title = "Dutch quaterly GDP growth", ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "acf")) {
+      stop("autoplot.acf requires a acf object, use object=object")
+    }
+ 
+    acf <- `dimnames<-`(object$acf, list(NULL, object$snames, object$snames))
+    lag <- `dimnames<-`(object$lag, list(NULL, object$snames, object$snames))
+ 
+    data <- as.data.frame.table(acf)[-1]
+    data$lag <- as.numeric(lag)
+ 
+    if (object$type == "correlation") {
+      data <- data[data$lag != 0, ]
+    }
+ 
+    # Initialise ggplot object
+    p <- ggplot2::ggplot(
+      ggplot2::aes_(x = ~lag, xend = ~lag, y = 0, yend = ~Freq),
+      data = data
+    )
+    p <- p + ggplot2::geom_hline(yintercept = 0)
+ 
+    # Add data
+    p <- p + ggplot2::geom_segment(lineend = "butt", ...)
+ 
+    # Add ci lines (assuming white noise input)
+    ci <- qnorm((1 + ci) / 2) / sqrt(object$n.used)
+    p <- p + ggplot2::geom_hline(yintercept = c(-ci, ci), colour = "blue", linetype = "dashed")
+ 
+    # Add facets if needed
+    if(any(dim(object$acf)[2:3] != c(1,1))){
+      p <- p + ggplot2::facet_grid(
+        as.formula(paste0(colnames(data)[1:2], collapse = "~"))
+      )
+    }
+ 
+    # Prepare graph labels
+    if (!is.null(object$ccf)) {
+      ylab <- "CCF"
+      ticktype <- "ccf"
+      #main <- paste("Series:", object$snames)
+      main <- title
+      nlags <- round(dim(object$lag)[1] / 2)
+    }
+    else if (object$type == "partial") {
+      ylab <- "PACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else {
+      ylab <- NULL
+    }
+ 
+    # Add seasonal x-axis
+    # Change ticks to be seasonal and prepare default title
+    if (!is.null(object$tsp)) {
+      freq <- object$tsp[3]
+    } else {
+      freq <- 1
+    }
+    if (!is.null(object$periods)) {
+      periods <- object$periods
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+    p <- p + ggplot2::scale_x_continuous(breaks = seasonalaxis(
+      freq,
+      nlags, type = ticktype, plot = FALSE
+    ), minor_breaks = minorbreaks)
+    p <- p + ggAddExtras(ylab = ylab, xlab = "Lag", main = main)
+    p <- p + ggplot2::theme(axis.title.x = element_text(size = 7), axis.title.y = element_text(size = 7), plot.title = element_text(size=8),                      axis.text.x = element_text(size = 6), axis.text.y = element_text(size = 6))
+    return(p)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggAcf <- function(x, lag.max = NULL,
+                  type = c("correlation", "covariance", "partial"),
+                  plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Acf)
+  object <- eval.parent(cl)
+  object$tsp <- tsp(x)
+  object$periods <- attributes(x)$msts
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggPacf <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  object <- Acf(x, lag.max = lag.max, type = "partial", na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggCcf <- function(x, y, lag.max=NULL, type=c("correlation", "covariance"),
+                  plot=TRUE, na.action=na.contiguous, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Ccf)
+  object <- eval.parent(cl)
+  object$snames <- paste(deparse(substitute(x)), "&", deparse(substitute(y)))
+  object$ccf <- TRUE
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+autoplot.mpacf <- function(object, ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "mpacf")) {
+      stop("autoplot.mpacf requires a mpacf object, use object=object")
+    }
+    if (!is.null(object$lower)) {
+      data <- data.frame(Lag = 1:object$lag, z = object$z, sig = (object$lower < 0 & object$upper > 0))
+      cidata <- data.frame(Lag = rep(1:object$lag, each = 2) + c(-0.5, 0.5), z = rep(object$z, each = 2), upper = rep(object$upper, each = 2), lower = rep(object$lower, each = 2))
+      plotpi <- TRUE
+    }
+    else {
+      data <- data.frame(Lag = 1:object$lag, z = object$z)
+      plotpi <- FALSE
+    }
+    # Initialise ggplot object
+    p <- ggplot2::ggplot()
+    p <- p + ggplot2::geom_hline(ggplot2::aes(yintercept = 0), size = 0.2)
+ 
+    # Add data
+    if (plotpi) {
+      p <- p + ggplot2::geom_ribbon(ggplot2::aes_(x = ~Lag, ymin = ~lower, ymax = ~upper), data = cidata, fill = "grey50")
+    }
+    p <- p + ggplot2::geom_line(ggplot2::aes_(x = ~Lag, y = ~z), data = data)
+    if (plotpi) {
+      p <- p + ggplot2::geom_point(ggplot2::aes_(x = ~Lag, y = ~z, colour = ~sig), data = data)
+    }
+ 
+    # Change ticks to be seasonal
+    freq <- frequency(object$x)
+    msts <- is.element("msts", class(object$x))
+ 
+    # Add seasonal x-axis
+    if (msts) {
+      periods <- attributes(object$x)$msts
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+ 
+    p <- p + ggplot2::scale_x_continuous(
+      breaks = seasonalaxis(frequency(object$x), length(data$Lag), type = "acf", plot = FALSE),
+      minor_breaks = minorbreaks
+    )
+ 
+    if (object$type == "partial") {
+      ylab <- "PACF"
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+    }
+ 
+    p <- p + ggAddExtras(ylab = ylab)
+ 
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Other functions from the forecast package
+#####
+
+# Make nice horizontal axis with ticks at seasonal lags
+# Return tick points if breaks=TRUE
+seasonalaxis <- function(frequency, nlags, type, plot=TRUE) {
+  # List of unlabelled tick points
+  out2 <- NULL
+  # Check for non-seasonal data
+  if (length(frequency) == 1) {
+    # Compute number of seasonal periods
+    np <- trunc(nlags / frequency)
+    evenfreq <- (frequency %% 2L) == 0L
+ 
+    # Defaults for labelled tick points
+    if (type == "acf") {
+      out <- pretty(1:nlags)
+    } else {
+      out <- pretty(-nlags:nlags)
+    }
+ 
+    if (frequency == 1) {
+      if (type == "acf" && nlags <= 16) {
+        out <- 1:nlags
+      } else if (type == "ccf" && nlags <= 8) {
+        out <- (-nlags:nlags)
+      } else {
+        if (nlags <= 30 && type == "acf") {
+          out2 <- 1:nlags
+        } else if (nlags <= 15 && type == "ccf") {
+          out2 <- (-nlags:nlags)
+        }
+        if (!is.null(out2)) {
+          out <- pretty(out2)
+        }
+      }
+    }
+    else if (frequency > 1 &&
+      ((type == "acf" && np >= 2L) || (type == "ccf" && np >= 1L))) {
+      if (type == "acf" && nlags <= 40) {
+        out <- frequency * (1:np)
+        out2 <- 1:nlags
+        # Add half-years
+        if (nlags <= 30 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((1:np) - 0.5))
+        }
+      }
+      else if (type == "ccf" && nlags <= 20) {
+        out <- frequency * (-np:np)
+        out2 <- (-nlags:nlags)
+        # Add half-years
+        if (nlags <= 15 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((-np:np) + 0.5))
+        }
+      }
+      else if (np < (12 - 4 * (type == "ccf"))) {
+        out <- frequency * (-np:np)
+      }
+    }
+  }
+  else {
+    # Determine which frequency to show
+    np <- trunc(nlags / frequency)
+    frequency <- frequency[which(np <= 16)]
+    if (length(frequency) > 0L) {
+      frequency <- min(frequency)
+    } else {
+      frequency <- 1
+    }
+    out <- seasonalaxis(frequency, nlags, type, plot = FALSE)
+  }
+  if (plot) {
+    axis(1, at = out)
+    if (!is.null(out2)) {
+      axis(1, at = out2, tcl = -0.2, labels = FALSE)
+    }
+  }
+  else {
+    return(out)
+  }
+}
+
+
+ggPacf01 <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, type = "correlation", ...) {
+  object <- Acf(x, lag.max = lag.max, type = type, na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+
+
+ggAddExtras <- function(xlab=NA, ylab=NA, main=NA) {
+  dots <- eval.parent(quote(list(...)))
+  extras <- list()
+  if ("xlab" %in% names(dots) || is.null(xlab) || any(!is.na(xlab))) {
+    if ("xlab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(dots$xlab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(paste0(xlab[!is.na(xlab)], collapse = " "))
+    }
+  }
+  if ("ylab" %in% names(dots) || is.null(ylab) || any(!is.na(ylab))) {
+    if ("ylab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(dots$ylab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(paste0(ylab[!is.na(ylab)], collapse = " "))
+    }
+  }
+  if ("main" %in% names(dots) || is.null(main) || any(!is.na(main))) {
+    if ("main" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(dots$main)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(paste0(main[!is.na(main)], collapse = " "))
+    }
+  }
+  if ("xlim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::xlim(dots$xlim)
+  }
+  if ("ylim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::ylim(dots$ylim)
+  }
+  return(extras)
+}
+ 
+ggtsbreaks <- function(x) {
+  # Make x axis contain only whole numbers (e.g., years)
+  return(unique(round(pretty(floor(x[1]):ceiling(x[2])))))
+}
+ 
+```
+
+```{r, message= FALSE, warning = FALSE, echo = FALSE}
+# Function to build a summary descriptives table
+## This can be generalized for when we have several columns
+desc <- function(x) {
+  n       <- length(x)
+  minimum <- min(x, na.rm = TRUE)
+  first_q <- quantile(x, 0.25, na.rm = TRUE)
+  media   <- mean(x, na.rm = TRUE)
+  mediana <- median(x, na.rm = TRUE)
+  third_q <- quantile(x, 0.75, na.rm = TRUE)
+  maximum <- max(x, na.rm = TRUE)
+  std     <- sd(x, na.rm = TRUE)
+    return(list(n = n, minimum = minimum, first_quar = first_q, media = media, mediana = mediana, third_quar = third_q, maximum = maximum, std = std))
+}
+
+```
+
+# Assignment 3
+
+## Pendências
+
+\begin{itemize}
+  \item \sout{Arrumar o layout da tabela dos modelos AR e incluir análise}
+  \item \sout{Arrumar o layout da tabela do ADF e incluir a análise}
+  \item \sout{Fazer item 3}
+  \item \sout{Fazer item 4}
+  \item Colocar a url pro código completo (apenas no final)
+  \item Limpar comentários (apenas no final)
+\end{itemize}
+
+
+## Introduction
+
+_Suppose that you are asked to analyze investment opportunities in the stock market by studying the dynamic behavior of 10 major stock prices. In particular, you are asked to study the stocks of Apple, Intel, Microsoft, Ford, General Electrics, Net ix, Nokia, Exxon Mobil, and Yahoo, as well as the S&P500 stock market index._
+
+_You can find the entire sample of daily data at your disposal in the Eviews workfile labeled data assign p3.wf1. This data set contains the daily stock prices of all the companies mentioned above and spans from the 14th of February 2007 to the 28th of January of 2013._
+
+## Importing and checking data
+
+Import using read.csv2() function - the data is in an online directory and there is no need to change this address.
+
+```{r}
+urlRemote  <- "https://raw.githubusercontent.com/aishameriane"
+pathGithub <- "/Mphil/master/EconIII/data_assign_p3.csv"
+token      <- "?token=AAVGJTT32POPYVK67LDJURK6QMGQG"
+
+url      <- paste0(urlRemote, pathGithub, token)
+dfData01 <- read.csv2(url, sep = ",", dec = ".", header = TRUE)
+```
+
+Check if everything is ok with the dataset: header and tail and summary statistics to check for missing data/outliers. We can see from the head and tail that the Data set indeed goes until the second quarter of 2009 and at least those observations seems to be completely filled with adequate ranges.
+
+```{r,echo = FALSE}
+cbind(t(head(dfData01, 3)), t(tail(dfData01, 3))) %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The column with the dates (`DATE`) is in numeric format and not in a nice position, so we will change to y-m-d and also switch places with the `APPLE` column.
+
+```{r, warning = FALSE, message = FALSE}
+# To discover the origin, first we computed ymd("2007-02-14")-732720. 
+dfData01$DATE <- as.Date(dfData01$DATE, origin="0001-01-01")
+dfData01      <- dfData01[,c(1,3,2,4,5,6,7,8,9,10,11,12)]
+```
+
+The next table has the descriptive statistics for the columns with information regarding the stocks. We can see that indeed we don't have any missing information and all values are numeric (there are no problems of formatting).
+
+```{r, echo = FALSE}
+# Descriptives
+descriptives     <- matrix(NA, nrow = 8, ncol = (ncol(dfData01)-2))
+rownames(descriptives) <- c("Observations", "Minimum", "1st quartile",
+                      "Mean", "Median",  "3rd quartile", "Maximum",
+                      "Desv. Pad.")
+
+for (j in 3:ncol(dfData01)) {
+  for (i in 1:8){
+  descriptives[i, (j-2)] <- round(as.numeric(desc(dfData01[,j])[i]),4)
+  }
+}
+
+descriptives <- data.frame(descriptives)
+names(descriptives) <- colnames(dfData01[3:12])
+
+t(descriptives[2:nrow(descriptives),]) %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The total number of observations is `r descriptives[1,1]`.
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Transform into a time series object. A nice tutorial can be seen here: 
+# https://www.datacamp.com/community/blog/r-xts-cheat-sheet. 
+# This is useful to make the graphs next. 
+tsData01 <- xts(dfData01[,7], order.by = dfData01[,2]) # Intel
+tsData02 <- xts(dfData01[,8], order.by = dfData01[,2]) # Microsoft
+
+# Melt the dataframe to have in only one column the stock price
+dfData02 <- melt(dfData01, id.vars = c("obs", "DATE"))
+colnames(dfData02) <- c("obs", "DATE", "Company", "StockPrice")
+```
+
+## Question 1
+
+_Provide plots for two stock market time-series at your choice and report 12-period ACF and PACF functions for those two time series. What does the sample ACF tell you about the dynamic properties of these stocks?_
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Making the graph
+p0 <- ggplot(dfData02[which(dfData02$Company =='INTEL' | dfData02$Company == 'MICROSOFT'),], 
+             aes(x = DATE, y = StockPrice, color = Company)) +
+        geom_line(alpha = 1)+
+        labs(title="Intel and Microsoft daily stock prices", 
+                  subtitle = "14 Feb 2007 to 28 Jan 2013",  y = "", 
+                  x= "Date", color = "Company") +
+        scale_colour_brewer(palette = "Set1") +
+        scale_x_date(limits = as.Date(c("2007-02-14","2013-01-28")), 
+                     date_breaks = "6 months", name = "Date", 
+                     labels = date_format("%m-%Y")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), )
+
+p1 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 180, 
+                              type = "correlation"), title = "ACF from Intel Stock Prices")
+p2 <- autoplot.acf01(ggPacf01(tsData02, plot = FALSE, lag.max = 180, 
+                              type = "correlation"), title = "ACF from Microsoft Stock Prices")
+
+p3 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 10, 
+                              type = "partial"), title = "PACF from Intel Stock Prices")
+p4 <- autoplot.acf01(ggPacf01(tsData02, plot = FALSE, lag.max = 10, 
+                              type = "partial"), title = "PACF from Microsoft Stock Prices")
+
+grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
+```
+
+**Comments on the graphs:** Both stocks seems to move closely (top graph), which is not surprising given that they are in the same sector. However, Microsoft' series exhibits a higher level (average) than Intel's, which can be observed by the gap between the to series. In general the cap seems constant, with exceptions in te beginning of 2009 and the end of 2011, where they were close. Also in the second semester of 2007 we notice that both series were in an ascending escalade, but Microsoft value went higher and the gap was also wider. 
+
+As for the ACF, we notice that there is a persistent behavior in both series (bottom graphs). Almost all the lags up to 180 (6 months, approximately) are significant and there is no indication of a ``cut'' in some lag as would be the case in an ARMA model with the MA coefficients different from zero. Moreover, the PACF, which is computed by computing the autocorrelation that is remaining after considering the previous lags, is highly persistent for the first lag, as for the others up until lag 10 it seems that they all fall inside the confidence intervals (we also did for higher $h$ and observed the same behavior). So, at least for these two series, it seems that we are dealing with an AR(1) with an unit root (i.e., a random walk).  
+
+*COMENTÁRIOS* (Aisha) Aqui acho bom a gente voltar nos slides e depois ver se tem mais alguma coisa a ser falada dessa dinâmica. Talvez alguma coisa sobre estacionariedade? Eu coloquei a PACF pra ver como fica junto, não sei se agora o gráfico da série não está muito pequeno. No final eu volto pra ajustar isso.
+
+## Question 2
+
+_Perform an ADF unit-root test for all the 10 time series using the general-to-specific approach based on the Schwarz Information Criterion (SIC). Report the values of the ADF test statistics. Is the unit-root hypothesis rejected for any time-series at the 90% confidence level? Did you expect to reject the unit-root hypothesis for some time-series at this confidence level? Justify your answer carefully._
+
+From the lecture slides, we have that the Augmented Dickey Fuller (ADF) test for an AR(p) model can be obtained as follows.
+
+Start from the AR(p) equation:
+\begin{equation}
+  X_t = \phi_1 X_{t-1} + \phi_2 X_{t-2} + \ldots + \phi_p X_{t-p} + \epsilon_t
+\end{equation}
+
+*Comentário* (AISHA) Terminar de colocar as equações depois se for o caso.
+
+Our procedure then will be:
+
+*    For each serie, estimate an AR(10) model with drift using the same function used in part 1 (`Arima()`);
+*    In sequence, remove the lags, and store the SIC value for each combination, until reach an AR(1);
+*    Recover which model had the smallest SIC (BIC is the same, see: https://en.wikipedia.org/wiki/Bayesian_information_criterion);
+*    Perform the ADF test considering the model with best BIC.
+
+We opted by not estimating an `ARMA(p,q)` model to avoid parameter redundancy (as discussed in Chapter 7 of @box2015). In particular, since we know in advance (from previous courses) that it is not possible to predict stock prices (or returns) and the usual procedure in finance is to model the variance, we already expected beforehand that any `ARMA(p,q)` would not be correctly specified anyway and focused in just making the exercise using the `AR(p)` model. But to make things more interesting, we challenged ourselves in developing the routine to pick the best `AR(p)` model from all possible lag combinations (including the removal of intermediate lags).
+
+```{r, message = FALSE, WARNING = FALSE}
+# This function is to avoid having an error in the 
+# estimation due to numerical problems.
+# It works similarly to iserror() in Excel
+    try2 <- function(code1, code2, silent = FALSE) {
+            tryCatch(code1, error = function(c) {
+            if (!silent) {code2}
+            else{code1}})}
+
+```
+
+```{r, message = FALSE, warning = FALSE}
+# This function will take the series and test all combinations of lags 
+# up until lag max to fit an AR model
+# Default method is MLE, in some cases will 
+# change the estimation method to quasi likelihood (therefore no AIC)
+# It returns the model with the minimum BIC
+
+fEstAR <- function(data, series, lagmax){  
+  
+    # Extract the correct series
+    tsData <- xts(data[,series], order.by = data[,2])
+
+    # Prepare the combinations of the lags
+    matriz <- list(matrix(rep(NA,1), ncol = 1))
+    
+    if (lagmax > 1){    
+        for (i in 2:lagmax){
+          matriz[[i]] <- matrix(rep(NA,(2^(i-1))*i), ncol = i)
+        }
+    }      
+        
+        # Assemble a list with all possible combinations of lags up until an AR(15)
+        for (j in 1:lagmax){
+          # The idea is that our objects are of this type
+          #matriz[[j]][,] <- matrix(rep(0,(2^(j-1))*j), ncol = j, nrow = (2^(j-1)))
+          # Now we fill with the bynary representation of the numbers, 
+          #this gives all the possible combinations
+          for (i in (2^(j-1)):(2^(j)-1)){
+              # Feeds with the bynary combinations
+              matriz[[j]][i-(2^(j-1)-1),] <- as.integer(intToBits(i)[1:j]) 
+          }
+        }
+    
+        # Now we just reorganize to use each line in the Arima() function
+        for (j in 1:lagmax){
+          # Converts to what we need for the Arima() fix argument
+          matriz[[j]] <- ifelse(matriz[[j]] == 1, NA, 0)
+          # Reverses the order to make consistent with the first column being higher lag
+          matriz[[j]] <- matriz[[j]][ , ncol(matriz[[j]]):1]           
+        }
+        
+        # Get the number of models 
+        
+        nModels <- 1
+        for (j in 2:length(matriz)){
+          nModels <- nModels + nrow(matriz[[j]])
+        }
+        dfModels <- data.frame(rep(NA, nModels), rep(NA, nModels))
+        names(dfModels) <- c("BIC", "Model")
+    
+        #tic("Total time:") ## Use for debugging
+        for (j in 1:length(matriz)){
+            #tic(paste(c("AR ", j, ":"))) ## Use for debugging
+            order <- j
+            matriz2 <- matriz[[j]]
+            
+            for (i in 1:max(1, nrow(matriz2))) {
+              coef  <- i
+              
+              if (j == 1){
+                model <- Arima(tsData, order = c(order,0,0), fixed = c(matriz2[coef], NA))
+              } else {
+                model <- try2(Arima(tsData, order = c(order,0,0), 
+                                    fixed = c(matriz2[coef, ], NA), method="CSS-ML", 
+                                    optim.method = "BFGS"), 
+                              Arima(tsData, order = c(order,0,0), 
+                                    fixed = c(matriz2[coef, ], NA), method="CSS"))
+              }
+              
+              dBIC  <- model$bic
+              if (j == 1){
+                dfModels[((i-1)+2^(j-1)),] <- c(dBIC, 
+                                                paste("AR(", as.character(order),
+                                                      "), with coef (", NA, ")", sep=""))
+              } else {
+                dfModels[((i-1)+2^(j-1)),] <- c(dBIC, 
+                                                paste("AR(", as.character(order),
+                                                      "), with coef (", paste(matriz2[coef, ],
+                                                       collapse=", "), ")", sep=""))
+              }
+              
+            }
+        #toc() ## Use for debugging
+        }
+        #toc() ## Use for debugging
+        
+        selModel <- dfModels[which(dfModels[,1] == min(dfModels[,1], na.rm=TRUE)),]
+        
+    return(selModel)
+}
+```
+
+Now we are ready to estimate the best (using BIC criteria) AR model for all the stocks.
+
+```{r, eval = TRUE, message = FALSE, warning = FALSE, echo = FALSE}
+# Saves the best model
+maxlag = 10
+mApple <- fEstAR(dfData01, 3, maxlag)
+mExxon <- fEstAR(dfData01, 4, maxlag)
+mFord  <- fEstAR(dfData01, 5, maxlag)
+mGenEl <- fEstAR(dfData01, 6, maxlag)
+mIntel <- fEstAR(dfData01, 7, maxlag)
+mMicro <- fEstAR(dfData01, 8, maxlag)
+mNetfl <- fEstAR(dfData01, 9, maxlag)
+mNokia <- fEstAR(dfData01, 10, maxlag)
+mSP500 <- fEstAR(dfData01, 11, maxlag)
+mYahoo <- fEstAR(dfData01, 12, maxlag)
+
+# Retrieves the coefficients vector
+coefApple <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mApple[2], 18), "[[() ]]", ""), ",", names = 1:2), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefExxon <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mExxon[2], 18), "[[() ]]", ""), ",", names = 1:2), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefFord  <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mFord[2], 18), "[[() ]]", ""), ",", names = 1), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefGenEl <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mGenEl[2], 18), "[[() ]]", ""), ",", names = 1:2), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefIntel <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mIntel[2], 18), "[[() ]]", ""), ",", names = 1), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefMicro <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mMicro[2], 18), "[[() ]]", ""), ",", names = 1), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefNetfl <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mNetfl[2], 18), "[[() ]]", ""), ",", names = 1), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefNokia <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mNokia[2], 18), "[[() ]]", ""), ",", names = 1), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefSP500 <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mSP500[2], 18), "[[() ]]", ""), ",", names = 3), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefYahoo <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mYahoo[2], 18), "[[() ]]", ""), ",", names = 1:7), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+
+# Put together
+dfEstim <- list(coefApple, coefExxon, coefFord, coefGenEl, coefIntel, 
+                coefMicro, coefNetfl, coefNokia, coefSP500, coefYahoo)
+
+# Fits the best model for each one of 10 series
+
+dfModels <- list(1,2,3,4,5,6,7,8,9,10)
+
+for (i in 1:10){
+  series <- i+2
+  tsData <- xts(dfData01[,series], order.by = dfData01[,2])
+  order  <- length(dfEstim[[i]])
+  fixed  <- dfEstim[[i]]
+  
+  dfModels[[i]] <- Arima(tsData, order = c(order,0,0), fixed = c(fixed, NA), 
+                         method="CSS-ML")
+}
+```
+
+The results from the best models for each company stock are summarized below.
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+lModels <- list(1,2,3,4,5,6,7,8,9,10)
+lTable  <- list(1,2,3,4,5,6,7,8,9,10)
+lRes    <- list(1,2,3,4,5,6,7,8,9,10)
+
+for (i in 1:length(dfModels)){
+  lRes[[i]]              <- dfModels[[i]]$residuals
+  lModels[[i]]           <- tidy(coeftest(dfModels[[i]]), stringsAsFactors = FALSE) 
+  lModels[[i]]           <- cbind(lModels[[i]][, 1], round(lModels[[i]][, 2:5], digits = 2))
+  colnames(lModels[[i]]) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  lModels[[i]][,1]       <- c(paste0("Lag ", 1:(nrow(lModels[[i]])-1)), "Intercept")
+}
+
+lagmax <- 30
+
+i <- 1
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p1 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Apple AR model residuals")
+  
+i <- 2
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p2 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Exxon AR model residuals")
+  
+i <- 3
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p3 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Ford AR model residuals")
+  
+  
+i <- 4
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p4 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Gen. Eletric AR model residuals")
+  
+i <- 5
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p5 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Intel AR model residuals")
+  
+i <- 6
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p6 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Microsoft AR model residuals")
+  
+i <- 7
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+
+  p7 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Netflix AR model residuals")
+  
+i <- 8
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p8 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Nokia AR model residuals")
+  
+i <- 9
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  p9 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from SP500 AR model residuals")
+  
+i <- 10
+  paste0("Best AR model for ", as.character(colnames(dfData01[i+2])))
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+
+  p10 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+                              type = "correlation"), title = "ACF from Yahoo AR model residuals")
+  
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, nrow = 5)
+```
+
+**Comments**: Although the models indeed show only significant coefficients, the ACF graphs of the residuals shows that some models might not be correctly specified, since not all lags are inside of the confidence intervals. For example, the ACF and PACF of the residuals from the AR(2) model estimated for Apple stocks are represented below. Clearly they do not resemble the expected graphs from a white noise (which we would have in the case of correct specification). 
+
+```{r, echo = FALSE, message = FALSE}
+
+p11 <- autoplot.acf01(ggPacf01(lRes[[1]], plot = FALSE, lag.max = lagmax, 
+                              type = "partial"), title = "PACF from Apple AR model residuals")
+
+grid.arrange(p1, p11, nrow = 1)
+```
+
+To further investigate this, we used an automatic model selection function, `auto.arima()`, which fits an ARIMA(p,d,q) model to the data. Accordingly to the function, the best model would be an ARIMA(0,1,0), i.e., no lag for the AR neither for the MA part, only a differencing term. However, since the goal of this exercise is not to find the best fit but work with the unit roots, we decided to not continue in this direction.
+
+*Comentário*: Achei que as tabelas estão meio feias e não sei se é necessário ter esses modelos todos, mas ao mesmo tempo mostra que a gente teve alguma preocupação em olhar o modelo selecionado. O que vc acha? Eu sei que idealmente a gente teria tudo numa tabela só, mas infelizmente eu não sei como formatar isso de forma rápida agora.
+
+Now that we have our final models, we can compute the ADF statistic.
+
+### Dickey Fuller test
+
+Following the lecture slides, we know that for an $AR(p)$ model, we are interested in computing $\beta = \phi_1 + \phi_2 + \ldots + \phi_p -1$ and our test is $H_0: \beta = 0$ versus $H_1: -2 < \beta < 0$. The test statistic is $ADF = \frac{\hat{\beta}}{SE(\hat{\beta})}$. Although our "best" models are considering combinations of lags (with ommited intermediate lags), the computation of the test statistic would be cumbersome. **Due to restrictions of time, we will use just all the lags instead removing the intermediate ones that might not be significant.**
+
+The function below is based on the `adf.test()` function from the package `tseries`. We changed slightly to take our series more easily from the dataframe and to organize the output for better visualization.
+
+```{r, message = FALSE, warning = FALSE}
+  adfTest <- function (data, models, series, alternative = c("stationary", "explosive")) {
+  
+          model <- models[[series]]
+          x     <- xts(data[,series+2], order.by = data[,2])
+          k     <- length(model$coef)-1
+        
+          if ((NCOL(x) > 1) || is.data.frame(x))
+            stop("x is not a vector or univariate time series")
+          if (any(is.na(x)))
+            stop("NAs in x")
+          if (k < 0)
+            stop("k negative")
+          alternative <- match.arg(alternative)
+          #DNAME <- deparse(substitute(x))
+          DNAME  <- colnames(data[series+2])
+          k <- k + 1
+          x <- as.vector(x, mode = "double")
+          # Takes the first difference, i.e, y = \Delta x_t
+          y <- diff(x)     
+          n <- length(y)
+          # creates a length(y)-k \times k matrix with lags of the 
+          #first difference series 
+          z <- embed(y, k)
+          # This is the 1st lag of the first difference series
+          yt <- z[, 1]
+          # This is just to make size compatible
+          xt1 <- x[k:n]
+          # This is a sequence of numbers from k to n
+          tt <- k:n        
+          if (k > 1) {
+            # For more than one lag in the original model, 
+            #you need this adittional guys, they are lags of y
+            yt1 <- z[, 2:k]                     
+            # To understand the regression, use head(cbind(yt, xt1, x))
+            # The lag of the first difference, yt, 
+            #is being regressed against the lag of the original series, 
+            #similar to the slides
+            res <- lm(yt ~ xt1 + 1 + tt + yt1)  # This is for AR(p), p>1
+          }
+          else res <- lm(yt ~ xt1 + 1 + tt)     # This is for AR(1)
+          res.sum <- summary(res)
+          # Compute the test statistic
+          STAT <- res.sum$coefficients[2, 1]/res.sum$coefficients[2,2] 
+          table <- cbind(c(4.38, 4.15, 4.04, 3.99, 3.98, 3.96), # Critical values
+                         c(3.95, 3.8, 3.73, 3.69, 3.68, 3.66),
+                         c(3.6, 3.5, 3.45, 3.43, 3.42, 3.41), 
+                         c(3.24, 3.18, 3.15, 3.13, 3.13, 3.12),
+                         c(1.14, 1.19, 1.22, 1.23, 1.24, 1.25), 
+                         c(0.8, 0.87, 0.9, 0.92, 0.93, 0.94), 
+                         c(0.5, 0.58, 0.62, 0.64, 0.65, 0.66), 
+                         c(0.15, 0.24, 0.28, 0.31, 0.32, 0.33))
+          table <- -table
+          tablen <- dim(table)[2]
+          tableT <- c(25, 50, 100, 250, 500, 1e+05)
+          tablep <- c(0.01, 0.025, 0.05, 0.1, 0.9, 0.95, 0.975, 0.99)
+          tableipl <- numeric(tablen)
+          for (i in (1:tablen)) tableipl[i] <- approx(tableT, table[,i], n, rule = 2)$y
+          # The next line locates the statistic in 
+          #terms of the critical values and gives the corresponding p-value
+          interpol <- approx(tableipl, tablep, STAT, rule = 2)$y
+          if (!is.na(STAT) && is.na(approx(tableipl, tablep, STAT,rule = 1)$y))
+            if (interpol == min(tablep))
+              warning("p-value smaller than printed p-value")
+            else warning("p-value greater than printed p-value")
+          if (alternative == "stationary")
+            # If the test is H1 = stationary, then a p-value 
+            #above 0.1 will show evidence of an unit root (we are using this test)
+            PVAL <- interpol
+          else if (alternative == "explosive")
+            # If the test is H1 = explosive, then a p-value 
+            #below 0.1 will show evidence of an unit root
+            PVAL <- 1 - interpol
+          else stop("irregular alternative")
+          PARAMETER <- k - 1
+          METHOD <- "Augmented Dickey-Fuller Test"
+          names(STAT) <- "Dickey-Fuller"
+          names(PARAMETER) <- "Lag order"
+          return(data.frame(statistic = STAT, parameter = PARAMETER,
+            alternative = alternative, p.value = PVAL, method = METHOD,
+            data.name = DNAME))
+          #structure(list(statistic = STAT, parameter = PARAMETER,
+          #  alternative = alternative, p.value = PVAL, method = METHOD,
+          #  data.name = DNAME), class = "htest")
+}
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+  dfADF <- list(1,2,3,4,5,6,7,8,9,10)
+
+  for(i in 1:length(dfModels)){
+      dfADF[[i]] <- adfTest(dfData01, dfModels, i, alternative = c("stationary"))
+  }
+  
+  dfADFfinal <- data.frame(rbind(dfADF[[1]], dfADF[[2]], dfADF[[3]], 
+                                 dfADF[[4]], dfADF[[5]], dfADF[[6]], dfADF[[7]], 
+                                 dfADF[[8]], dfADF[[9]], dfADF[[10]]))
+  
+  dfADFfinal <- dfADFfinal[, c(6, 2, 1, 4)]
+  dfADFfinal[,c(3,4)] <- round(dfADFfinal[,c(3,4)], 4)
+  row.names(dfADFfinal) <- 1:10
+  colnames(dfADFfinal)  <- c("Company", "p of AR(p)", "Test-statistic", "p-value")
+  
+  paste0("Results from the ADF test")
+  dfADFfinal %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Comments:** From the table with the the ADF test, using as null-hypothesis that the serie has a unit root, we cannot reject $H_0$ for any ot the companies using a significance level of $10\%$. This result was already expected by us: as mentioned in the other parts of this assignment, the series indeed show that the AR models estimated were not correctly specified and from the persistence of the ACF and PACF of the original data, there is indication of persistence in the series. From the economic point of view, since the series are the prices and not the returns, it is not surprising that they all exibit unit roots using the test. Prices usually have a long dependency through the price level, which is known to be non-stationary because it is the accumulation of past prices. This is the same problem we would have faced in part one when using GDP if we used the level GDP and not the growth rate.
+
+*Comentário* (Aisha) A questão pede pra exlicar com cuidado, isso foi tudo que consegui pensar.
+
+## Question 3
+
+_Assume that both the stocks of Apple and Microsoft follow a random walk process. Produce a 5-day forecast for the stocks of Apple and Microsoft. Add 95% confidence bounds to your forecasts under the assumption of Gaussian innovations. Is there any investment advice you can give on these stocks? Is their value expected to increase or decrease?_
+
+The random walk equation is given by:
+
+$$X_t = X_{t-1} + \varepsilon_t $$
+where $\varepsilon_t \sim \text{WN}(0, \sigma^2)$. As discussed in tutorial 4, the forecast to $h$ period ahead is given by:
+
+$$\hat{X}_{T+h} = 1^h \cdot \sigma^2 = \sigma^2$$
+and the variance of the prediction error will be given by $h \cdot \sigma^2$. To compute things properly, we need an estimate for $\sigma^2$. Our procedure was to fit an AR(1) model (using the standard `lm()` function from R, since the `Arima()` function complains about the unit root) to obtain the estimate for $\sigma^2$ and use the formulas to obtain the forecasts.
+
+```{r, warning = FALSE, message = FALSE}
+    tsData01 <- xts(dfData01[,"APPLE"], order.by = dfData01[,2])     # Apple
+    tsData02 <- xts(dfData01[,"MICROSOFT"], order.by = dfData01[,2]) # Microsoft
+    
+    mApple     <- lm(tsData01 ~ lag(tsData01) - 1, na.action = na.exclude)
+    mMicrosoft <- lm(tsData02 ~ lag(tsData02) - 1, na.action = na.exclude)
+    
+    sumApple <- summary(mApple)
+    sumMicro <- summary(mMicrosoft)
+    
+    sigmaApple <- sumApple$sigma
+    sigmaMicro <- sumMicro$sigma
+    
+    # Gets the last observation
+    forApple   <- rep(tsData01[length(tsData01)], 5)
+    forMicro   <- rep(tsData02[length(tsData02)], 5)
+    
+    # The forecast intervals 
+    alpha <- 0.05
+    h     <- 1:5
+    lbApple <- -qnorm(alpha/2)*sqrt(h)*sigmaApple
+    ubApple <-  qnorm(alpha/2)*sqrt(h)*sigmaApple
+    lbMicro <- -qnorm(alpha/2)*sqrt(h)*sigmaMicro
+    ubMicro <-  qnorm(alpha/2)*sqrt(h)*sigmaMicro
+    
+    dates <- ymd("2013-01-28")+1:5
+    
+    # Build the dataframe
+    dfForecast <- data.frame(dates, rep(0,5), lbApple+forApple, forApple, ubApple+forApple, 
+                             lbMicro + forMicro, forMicro, ubMicro + forMicro)
+    names(dfForecast) <- c("DATE", "StockPrice","LBApple", "APPLE", "UPApple", 
+                           "LBMicro", "MICRO", "UPMicro")
+    
+    # Melt the dataframe to have in only one column the stock price
+    dfData03 <- dfData01[(nrow(dfData01)-90):(nrow(dfData01)),]
+    dfData03 <- melt(dfData03, id.vars = c("obs", "DATE"))
+    colnames(dfData03) <- c("obs", "DATE", "Company", "StockPrice")
+    
+    p1 <-  ggplot(dfData03[which(dfData03$Company =='APPLE'),], 
+             aes(x = DATE, y = StockPrice, color = Company)) +
+        geom_line(alpha = 1)+
+        labs(title="Apple daily stock prices", 
+                  subtitle = "14 Sep 2012 to 28 Jan 2013",  y = "", 
+                  x= "Date", color = "Company") +
+        scale_colour_brewer(palette = "Set1") +
+        scale_x_date(limits = as.Date(c("2012-09-14","2013-02-04")), 
+                     date_breaks = "10 days", name = "Date", 
+                     labels = date_format("%d-%m-%Y")) +
+        geom_line(data = dfForecast, aes(x=ymd(DATE), y=APPLE), color = "coral") +
+        geom_ribbon(data= dfForecast, aes(x=ymd(DATE), ymin=LBApple, 
+                                          ymax=UPApple, color = "Apple"), 
+                    alpha=0.4, fill = "coral") +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6))+
+        theme(legend.position = "none")
+      
+############
+      
+        p2 <- ggplot(dfData03[which(dfData03$Company =='MICROSOFT'),], 
+             aes(x = DATE, y = StockPrice, color = Company)) +
+        geom_line(alpha = 1)+
+        labs(title="Microsoft daily stock prices", 
+                  subtitle = "14 Sep 201 to 28 Jan 2013",  y = "", 
+                  x= "Date", color = "Company") +
+        scale_colour_brewer(palette = "Set1") +
+        scale_x_date(limits = as.Date(c("2012-09-14","2013-02-04")), 
+                     date_breaks = "10 days", name = "Date", 
+                     labels = date_format("%d-%m-%Y")) +
+        geom_line(data = dfForecast, aes(x=ymd(DATE), y=MICRO), color = "skyblue4") +
+        geom_ribbon(data= dfForecast, aes(x=ymd(DATE), ymin=LBMicro, 
+                                          ymax=UPMicro, color = "skyblue4"), 
+                    alpha=0.4, fill = "skyblue") +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6))+
+        theme(legend.position = "none")
+    
+    
+    grid.arrange(p1, p2, nrow = 2)
+    
+```
+
+**Comments:** Plots were made in different graphs due to scale differences and to be able to better visualize the forecast region we only ploted the last 90 days of each series. As expected, the forecasts are not informative about the prices because they are just the last information available. We wouldn't give any investment advice bases on this kind of model, given the discussion above on how it is not possible to predict stock prices. In other words, it is not possible, based on this model, to say if we expected the price to go up or down, since the forecast is always the same last value. 
+
+## Question 4
+
+_Please investigate the following claim_:
+
+``Financial analysts have found that changes in the price of Microsoft stocks can be largely explained by fluctuations in the market value of Exxon Mobile. According to these analysts, this shows the extent to which the Microsoft Corporation is currently exposed to the market performance of the oil and gas industry.''
+
+_Do you find a statistically significant contemporaneous relation between Microsoft and Exxon Mobile stock prices? Do you agree that changes in Microsoft stock prices are largely explained by uctuations in the stock price of Exxon Mobile? Justify your answer._
+
+To better answer this question, first we shall make the visual inspection in both series.
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Transform into a time series object. A nice tutorial can be seen here: 
+# https://www.datacamp.com/community/blog/r-xts-cheat-sheet. 
+# This is useful to make the graphs next. 
+tsData01 <- xts(dfData01[,3], order.by = dfData01[,2]) # Exxon
+tsData02 <- xts(dfData01[,8], order.by = dfData01[,2]) # Microsoft
+
+# Melt the dataframe to have in only one column the stock price
+dfData02 <- melt(dfData01, id.vars = c("obs", "DATE"))
+colnames(dfData02) <- c("obs", "DATE", "Company", "StockPrice")
+```
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Making the graph
+p0 <- ggplot(dfData02[which(dfData02$Company =='EXXON_MOBIL' | dfData02$Company == 'MICROSOFT'),], 
+             aes(x = DATE, y = StockPrice, color = Company)) +
+        geom_line(alpha = 1)+
+        labs(title="Exxon and Microsoft daily stock prices", 
+                  subtitle = "14 Feb 2007 to 28 Jan 2013",  y = "", 
+                  x= "Date", color = "Company") +
+        scale_colour_brewer(palette = "Set1") +
+        scale_x_date(limits = as.Date(c("2007-02-14","2013-01-28")), 
+                     date_breaks = "6 months", name = "Date", 
+                     labels = date_format("%m-%Y")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), )
+
+p1 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 180, 
+                              type = "correlation"), title = "ACF from Intel Stock Prices")
+p2 <- autoplot.acf01(ggPacf01(tsData02, plot = FALSE, lag.max = 180, 
+                              type = "correlation"), title = "ACF from Exxon Stock Prices")
+
+p3 <- autoplot.acf01(ggPacf01(tsData01, plot = FALSE, lag.max = 10, 
+                              type = "partial"), title = "PACF from Intel Stock Prices")
+p4 <- autoplot.acf01(ggPacf01(tsData02, plot = FALSE, lag.max = 10, 
+                              type = "partial"), title = "PACF from Microsoft Stock Prices")
+
+#grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
+
+p0
+```
+
+**Comments:** Given the the different scale in the stock prices, the visual inspection is not clear that the series move together, as it was for Intel and Microsoft prices. However, we can notice some common downwards and upward trends in the series, which might suggest that they are both $I(1)$ and candidate to be cointegrated. 
+
+
+So, we proceed to analyze if in fact the series are cointegrated to rule out spurious regression. As we discussed in the lectures, if two series $Y_t$ and $X_t$ are cointegrated, then $Y_t - \lambda X_t$ are stationary. Since we don't have the value for $\lambda$, it must first be estimated.
+
+A simple way to do this is first compute the regression $Y_t = \beta_0 + \beta_1 X_t + \varepsilon_t$ to get an estimate for $\beta_1$ using OLS. Then, we compute the residuals using $\hat{\varepsilon}_t = Y_t - \hat{\beta}_1X_t$ and verify the stationarity using the ADF test routine that we based our previous tests (since now we have a single series and not several as before, it was best to use the package function directly and not our modified version).
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+  mReg <- lm(tsData02 ~ tsData01)
+  mRes <- tsData02 - mReg$coefficients[1] - mReg$coefficients[2]*tsData01
+  tResult <- adf.test(mRes, alternative = c("stationary"))
+```
+
+Using the null hypothesis that the residuals are not stationary, we obtained a test statistic of `r round(as.numeric(tResult$statistic),4)`, which corresponds to a p-value of `r round(as.numeric(tResult$p.value),4)`, so the conclusion is that we cannot reject $H_0$ for a significance level of $10\%$.
+
+Therefore, the analysis leads us to conclude that both series are not cointegrated and it is not correct to use Exxon prices to explain Microsoft prices. Apart from the statistical analysis, even without this results, we think it would be hard to sell an economic story on how the oil and gas prices could affect Microsoft shares. It is true that oil prices have an impact in production of goods and services in the real economy, because they affect directly the transports. However, Microsoft is a software industry, mostly, therefore the delivery of its products should not be so sensible to gas and oil, even if the demand for its products rise as a consequence of the oil price fluctuation. And of course in case of increase in demand, it could be that microsoft needs to increase the inputs, but this means hiring more workers, which also would not be affected by gas prices.
+
+*Comentários:* Acho que era isso, mas eu não reli o texto pra ver se está bem escrito.
+
+# References
