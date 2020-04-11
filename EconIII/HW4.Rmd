@@ -1,0 +1,1228 @@
+---
+title: "Econometrics III HW - part 4"
+author: "A. Schmidt and P. Assunção"
+date: "3-4-2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# Loading packages and helper functions
+
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Verify if a package is already installed, if not, download and install before loading. 
+chooseCRANmirror(graphics = FALSE, ind = 10)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries, lubridate, scales, tictoc, stringr, tidyr, urca)
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Prevents code from getting out of the page
+## Works with almost everything except urls and strings.
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Helper function for the histograms (adapted from the source of the forecast package)
+gghistogram01 <- function(x, add.normal=FALSE, add.kde=FALSE, add.rug=TRUE, bins, boundary=0, xlabel = "Series", ylabel = "Number of observations") {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (missing(bins)) {
+      bins <- min(500, grDevices::nclass.FD(na.exclude(x)))
+    }
+    data <- data.frame(x = as.numeric(c(x)))
+    # Initialise ggplot object and plot histogram
+    binwidth <- (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)) / bins
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_histogram(ggplot2::aes(x), data = data, binwidth = binwidth, boundary = boundary) +
+      # ggplot2::xlab(deparse(substitute(x)))
+      ggplot2::xlab(xlabel) +
+      ggplot2::ylab(ylabel) +
+      ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8))
+    # Add normal density estimate
+    if (add.normal || add.kde) {
+      xmin <- min(x, na.rm = TRUE)
+      xmax <- max(x, na.rm = TRUE)
+      if (add.kde) {
+        h <- stats::bw.SJ(x)
+        xmin <- xmin - 3 * h
+        xmax <- xmax + 3 * h
+      }
+      if (add.normal) {
+        xmean <- mean(x, na.rm = TRUE)
+        xsd <- sd(x, na.rm = TRUE)
+        xmin <- min(xmin, xmean - 3 * xsd)
+        xmax <- max(xmax, xmean + 3 * xsd)
+      }
+      xgrid <- seq(xmin, xmax, l = 512)
+      if (add.normal) {
+        df <- data.frame(x = xgrid, y = length(x) * binwidth * stats::dnorm(xgrid, xmean, xsd))
+        p <- p + ggplot2::geom_line(ggplot2::aes(df$x, df$y), col = "#ff8a62")
+      }
+      if (add.kde) {
+        kde <- stats::density(x, bw = h, from = xgrid[1], to = xgrid[512], n = 512)
+        p <- p + ggplot2::geom_line(ggplot2::aes(x = kde$x, y = length(x) * binwidth * kde$y), col = "#67a9ff")
+      }
+    }
+    if (add.rug) {
+      p <- p + ggplot2::geom_rug(ggplot2::aes(x))
+    }
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# ACF plot function adapted from the `forecast` package
+autoplot.acf01 <- function(object, ci=0.95, title = main_title, ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "acf")) {
+      stop("autoplot.acf requires a acf object, use object=object")
+    }
+ 
+    acf <- `dimnames<-`(object$acf, list(NULL, object$snames, object$snames))
+    lag <- `dimnames<-`(object$lag, list(NULL, object$snames, object$snames))
+ 
+    data <- as.data.frame.table(acf)[-1]
+    data$lag <- as.numeric(lag)
+ 
+    if (object$type == "correlation") {
+      data <- data[data$lag != 0, ]
+    }
+ 
+    # Initialise ggplot object
+    p <- ggplot2::ggplot(
+      ggplot2::aes_(x = ~lag, xend = ~lag, y = 0, yend = ~Freq),
+      data = data
+    )
+    p <- p + ggplot2::geom_hline(yintercept = 0)
+ 
+    # Add data
+    p <- p + ggplot2::geom_segment(lineend = "butt", ...)
+ 
+    # Add ci lines (assuming white noise input)
+    ci <- qnorm((1 + ci) / 2) / sqrt(object$n.used)
+    p <- p + ggplot2::geom_hline(yintercept = c(-ci, ci), colour = "blue", linetype = "dashed")
+ 
+    # Add facets if needed
+    if(any(dim(object$acf)[2:3] != c(1,1))){
+      p <- p + ggplot2::facet_grid(
+        as.formula(paste0(colnames(data)[1:2], collapse = "~"))
+      )
+    }
+ 
+    # Prepare graph labels
+    if (!is.null(object$ccf)) {
+      ylab <- "CCF"
+      ticktype <- "ccf"
+      #main <- paste("Series:", object$snames)
+      main <- title
+      nlags <- round(dim(object$lag)[1] / 2)
+    }
+    else if (object$type == "partial") {
+      ylab <- "PACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+      ticktype <- "acf"
+      #main <- paste("Series:", object$series)
+      main <- title
+      nlags <- dim(object$lag)[1]
+    }
+    else {
+      ylab <- NULL
+    }
+ 
+    # Add seasonal x-axis
+    # Change ticks to be seasonal and prepare default title
+    if (!is.null(object$tsp)) {
+      freq <- object$tsp[3]
+    } else {
+      freq <- 1
+    }
+    if (!is.null(object$periods)) {
+      periods <- object$periods
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+    p <- p + ggplot2::scale_x_continuous(breaks = seasonalaxis(
+      freq,
+      nlags, type = ticktype, plot = FALSE
+    ), minor_breaks = minorbreaks)
+    p <- p + ggAddExtras(ylab = ylab, xlab = "Lag", main = main)
+    p <- p + ggplot2::theme(axis.title.x = element_text(size = 8), axis.title.y = element_text(size = 8), plot.title = element_text(size=10))
+    return(p)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggAcf <- function(x, lag.max = NULL,
+                  type = c("correlation", "covariance", "partial"),
+                  plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Acf)
+  object <- eval.parent(cl)
+  object$tsp <- tsp(x)
+  object$periods <- attributes(x)$msts
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggPacf <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, ...) {
+  object <- Acf(x, lag.max = lag.max, type = "partial", na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+ggCcf <- function(x, y, lag.max=NULL, type=c("correlation", "covariance"),
+                  plot=TRUE, na.action=na.contiguous, ...) {
+  cl <- match.call()
+  if (plot) {
+    cl$plot <- FALSE
+  }
+  cl[[1]] <- quote(Ccf)
+  object <- eval.parent(cl)
+  object$snames <- paste(deparse(substitute(x)), "&", deparse(substitute(y)))
+  object$ccf <- TRUE
+  if (plot) {
+    return(autoplot(object, ...))
+  }
+  else {
+    return(object)
+  }
+}
+ 
+#' @rdname autoplot.acf
+#' @export
+autoplot.mpacf <- function(object, ...) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 is needed for this function to work. Install it via install.packages(\"ggplot2\")", call. = FALSE)
+  }
+  else {
+    if (!inherits(object, "mpacf")) {
+      stop("autoplot.mpacf requires a mpacf object, use object=object")
+    }
+    if (!is.null(object$lower)) {
+      data <- data.frame(Lag = 1:object$lag, z = object$z, sig = (object$lower < 0 & object$upper > 0))
+      cidata <- data.frame(Lag = rep(1:object$lag, each = 2) + c(-0.5, 0.5), z = rep(object$z, each = 2), upper = rep(object$upper, each = 2), lower = rep(object$lower, each = 2))
+      plotpi <- TRUE
+    }
+    else {
+      data <- data.frame(Lag = 1:object$lag, z = object$z)
+      plotpi <- FALSE
+    }
+    # Initialise ggplot object
+    p <- ggplot2::ggplot()
+    p <- p + ggplot2::geom_hline(ggplot2::aes(yintercept = 0), size = 0.2)
+ 
+    # Add data
+    if (plotpi) {
+      p <- p + ggplot2::geom_ribbon(ggplot2::aes_(x = ~Lag, ymin = ~lower, ymax = ~upper), data = cidata, fill = "grey50")
+    }
+    p <- p + ggplot2::geom_line(ggplot2::aes_(x = ~Lag, y = ~z), data = data)
+    if (plotpi) {
+      p <- p + ggplot2::geom_point(ggplot2::aes_(x = ~Lag, y = ~z, colour = ~sig), data = data)
+    }
+ 
+    # Change ticks to be seasonal
+    freq <- frequency(object$x)
+    msts <- is.element("msts", class(object$x))
+ 
+    # Add seasonal x-axis
+    if (msts) {
+      periods <- attributes(object$x)$msts
+      periods <- periods[periods != freq]
+      minorbreaks <- periods * seq(-20:20)
+    }
+    else {
+      minorbreaks <- NULL
+    }
+ 
+    p <- p + ggplot2::scale_x_continuous(
+      breaks = seasonalaxis(frequency(object$x), length(data$Lag), type = "acf", plot = FALSE),
+      minor_breaks = minorbreaks
+    )
+ 
+    if (object$type == "partial") {
+      ylab <- "PACF"
+    }
+    else if (object$type == "correlation") {
+      ylab <- "ACF"
+    }
+ 
+    p <- p + ggAddExtras(ylab = ylab)
+ 
+    return(p)
+  }
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Other functions from the forecast package
+#####
+
+# Make nice horizontal axis with ticks at seasonal lags
+# Return tick points if breaks=TRUE
+seasonalaxis <- function(frequency, nlags, type, plot=TRUE) {
+  # List of unlabelled tick points
+  out2 <- NULL
+  # Check for non-seasonal data
+  if (length(frequency) == 1) {
+    # Compute number of seasonal periods
+    np <- trunc(nlags / frequency)
+    evenfreq <- (frequency %% 2L) == 0L
+ 
+    # Defaults for labelled tick points
+    if (type == "acf") {
+      out <- pretty(1:nlags)
+    } else {
+      out <- pretty(-nlags:nlags)
+    }
+ 
+    if (frequency == 1) {
+      if (type == "acf" && nlags <= 16) {
+        out <- 1:nlags
+      } else if (type == "ccf" && nlags <= 8) {
+        out <- (-nlags:nlags)
+      } else {
+        if (nlags <= 30 && type == "acf") {
+          out2 <- 1:nlags
+        } else if (nlags <= 15 && type == "ccf") {
+          out2 <- (-nlags:nlags)
+        }
+        if (!is.null(out2)) {
+          out <- pretty(out2)
+        }
+      }
+    }
+    else if (frequency > 1 &&
+      ((type == "acf" && np >= 2L) || (type == "ccf" && np >= 1L))) {
+      if (type == "acf" && nlags <= 40) {
+        out <- frequency * (1:np)
+        out2 <- 1:nlags
+        # Add half-years
+        if (nlags <= 30 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((1:np) - 0.5))
+        }
+      }
+      else if (type == "ccf" && nlags <= 20) {
+        out <- frequency * (-np:np)
+        out2 <- (-nlags:nlags)
+        # Add half-years
+        if (nlags <= 15 && evenfreq && np <= 3) {
+          out <- c(out, frequency * ((-np:np) + 0.5))
+        }
+      }
+      else if (np < (12 - 4 * (type == "ccf"))) {
+        out <- frequency * (-np:np)
+      }
+    }
+  }
+  else {
+    # Determine which frequency to show
+    np <- trunc(nlags / frequency)
+    frequency <- frequency[which(np <= 16)]
+    if (length(frequency) > 0L) {
+      frequency <- min(frequency)
+    } else {
+      frequency <- 1
+    }
+    out <- seasonalaxis(frequency, nlags, type, plot = FALSE)
+  }
+  if (plot) {
+    axis(1, at = out)
+    if (!is.null(out2)) {
+      axis(1, at = out2, tcl = -0.2, labels = FALSE)
+    }
+  }
+  else {
+    return(out)
+  }
+}
+
+
+ggPacf01 <- function(x, lag.max = NULL,
+                   plot = TRUE, na.action = na.contiguous, demean=TRUE, type = "correlation", ...) {
+  object <- Acf(x, lag.max = lag.max, type = type, na.action = na.action, demean = demean, plot = FALSE)
+  object$series <- deparse(substitute(x))
+  if (plot) {
+    return(autoplot(object, ...))
+  } else {
+    return(object)
+  }
+}
+
+
+ggAddExtras <- function(xlab=NA, ylab=NA, main=NA) {
+  dots <- eval.parent(quote(list(...)))
+  extras <- list()
+  if ("xlab" %in% names(dots) || is.null(xlab) || any(!is.na(xlab))) {
+    if ("xlab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(dots$xlab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::xlab(paste0(xlab[!is.na(xlab)], collapse = " "))
+    }
+  }
+  if ("ylab" %in% names(dots) || is.null(ylab) || any(!is.na(ylab))) {
+    if ("ylab" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(dots$ylab)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ylab(paste0(ylab[!is.na(ylab)], collapse = " "))
+    }
+  }
+  if ("main" %in% names(dots) || is.null(main) || any(!is.na(main))) {
+    if ("main" %in% names(dots)) {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(dots$main)
+    }
+    else {
+      extras[[length(extras) + 1]] <- ggplot2::ggtitle(paste0(main[!is.na(main)], collapse = " "))
+    }
+  }
+  if ("xlim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::xlim(dots$xlim)
+  }
+  if ("ylim" %in% names(dots)) {
+    extras[[length(extras) + 1]] <- ggplot2::ylim(dots$ylim)
+  }
+  return(extras)
+}
+ 
+ggtsbreaks <- function(x) {
+  # Make x axis contain only whole numbers (e.g., years)
+  return(unique(round(pretty(floor(x[1]):ceiling(x[2])))))
+}
+ 
+```
+
+```{r, message= FALSE, warning = FALSE, echo = FALSE}
+# Function to build a summary descriptives table
+## This can be generalized for when we have several columns
+desc <- function(x) {
+  n       <- length(x)
+  minimum <- min(x, na.rm = TRUE)
+  first_q <- quantile(x, 0.25, na.rm = TRUE)
+  media   <- mean(x, na.rm = TRUE)
+  mediana <- median(x, na.rm = TRUE)
+  third_q <- quantile(x, 0.75, na.rm = TRUE)
+  maximum <- max(x, na.rm = TRUE)
+  std     <- sd(x, na.rm = TRUE)
+    return(list(n = n, minimum = minimum, first_quar = first_q, media = media, mediana = mediana, third_quar = third_q, maximum = maximum, std = std))
+}
+
+```
+
+```{r, message = FALSE, WARNING = FALSE, echo = FALSE}
+# This function is to avoid having an error in the 
+# estimation due to numerical problems.
+# It works similarly to iserror() in Excel
+    try2 <- function(code1, code2, silent = FALSE) {
+            tryCatch(code1, error = function(c) {
+            if (!silent) {code2}
+            else{code1}})}
+
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# This function will take the series and test all combinations of lags 
+# up until lag max to fit an AR model
+# Default method is MLE, in some cases will 
+# change the estimation method to quasi likelihood (therefore no AIC)
+# It returns the model with the minimum BIC
+
+fEstAR <- function(data, series, lagmax){  
+    # Debug
+    #data <- dfData01
+    #series <- 4
+    #lagmax <- 4
+    # Extract the correct series
+    tsData <- xts(data[,series], order.by = data[,2])
+
+    # Prepare the combinations of the lags
+    matriz <- list(matrix(rep(NA,1), ncol = 1))
+    
+    if (lagmax > 1){    
+        for (i in 2:lagmax){
+          matriz[[i]] <- matrix(rep(NA,(2^(i-1))*i), ncol = i)
+        }
+    }      
+        
+        # Assemble a list with all possible combinations of lags up until an AR(15)
+        for (j in 1:lagmax){
+          # The idea is that our objects are of this type
+          #matriz[[j]][,] <- matrix(rep(0,(2^(j-1))*j), ncol = j, nrow = (2^(j-1)))
+          # Now we fill with the bynary representation of the numbers, 
+          #this gives all the possible combinations
+          for (i in (2^(j-1)):(2^(j)-1)){
+              # Feeds with the bynary combinations
+              matriz[[j]][i-(2^(j-1)-1),] <- as.integer(intToBits(i)[1:j]) 
+          }
+        }
+    
+        # Now we just reorganize to use each line in the Arima() function
+        for (j in 1:lagmax){
+          # Converts to what we need for the Arima() fix argument
+          matriz[[j]] <- ifelse(matriz[[j]] == 1, NA, 0)
+          # Reverses the order to make consistent with the first column being higher lag
+          matriz[[j]] <- matriz[[j]][ , ncol(matriz[[j]]):1]           
+        }
+        
+        # Get the number of models 
+        
+        nModels <- 1
+        for (j in 2:length(matriz)){
+          nModels <- nModels + nrow(matriz[[j]])
+        }
+        dfModels <- data.frame(rep(NA, nModels), rep(NA, nModels))
+        names(dfModels) <- c("BIC", "Model")
+    
+        #tic("Total time:") ## Use for debugging
+        for (j in 1:length(matriz)){
+            #tic(paste(c("AR ", j, ":"))) ## Use for debugging
+            order <- j
+            matriz2 <- matriz[[j]]
+            
+            for (i in 1:max(1, nrow(matriz2))) {
+              coef  <- i
+              
+              if (j == 1){
+                model <- try2(Arima(tsData, order = c(order,0,0), fixed = c(matriz2[coef], NA), method="CSS-ML", 
+                              optim.method = "BFGS"), 
+                              Arima(tsData, order = c(order,0,0), fixed = c(matriz2[coef], NA), method="CSS"))
+                
+                
+              } else {
+                model <- try2(Arima(tsData, order = c(order,0,0), 
+                                    fixed = c(matriz2[coef, ], NA), method="CSS-ML", 
+                                    optim.method = "BFGS"), 
+                              Arima(tsData, order = c(order,0,0), 
+                                    fixed = c(matriz2[coef, ], NA), method="CSS"))
+              }
+              
+              dBIC  <- model$bic
+              if (j == 1){
+                dfModels[((i-1)+2^(j-1)),] <- c(dBIC, 
+                                                paste("AR(", as.character(order),
+                                                      "), with coef (", NA, ")", sep=""))
+              } else {
+                dfModels[((i-1)+2^(j-1)),] <- c(dBIC, 
+                                                paste("AR(", as.character(order),
+                                                      "), with coef (", paste(matriz2[coef, ],
+                                                       collapse=", "), ")", sep=""))
+              }
+              
+            }
+        #toc() ## Use for debugging
+        }
+        #toc() ## Use for debugging
+        
+        selModel <- dfModels[which(dfModels[,1] == min(dfModels[,1], na.rm=TRUE)),]
+        
+    return(selModel)
+}
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+  adfTest <- function (data, models, series, alternative = c("stationary", "explosive")) {
+  
+          model <- models[[series]]
+          x     <- xts(data[,series+2], order.by = data[,2])
+          k     <- length(model$coef)-1
+        
+          if ((NCOL(x) > 1) || is.data.frame(x))
+            stop("x is not a vector or univariate time series")
+          if (any(is.na(x)))
+            stop("NAs in x")
+          if (k < 0)
+            stop("k negative")
+          alternative <- match.arg(alternative)
+          #DNAME <- deparse(substitute(x))
+          DNAME  <- colnames(data[series+2])
+          k <- k + 1
+          x <- as.vector(x, mode = "double")
+          # Takes the first difference, i.e, y = \Delta x_t
+          y <- diff(x)     
+          n <- length(y)
+          # creates a length(y)-k \times k matrix with lags of the 
+          #first difference series 
+          z <- embed(y, k)
+          # This is the 1st lag of the first difference series
+          yt <- z[, 1]
+          # This is just to make size compatible
+          xt1 <- x[k:n]
+          # This is a sequence of numbers from k to n
+          tt <- k:n        
+          if (k > 1) {
+            # For more than one lag in the original model, 
+            #you need this adittional guys, they are lags of y
+            yt1 <- z[, 2:k]                     
+            # To understand the regression, use head(cbind(yt, xt1, x))
+            # The lag of the first difference, yt, 
+            #is being regressed against the lag of the original series, 
+            #similar to the slides
+            res <- lm(yt ~ xt1 + 1 + tt + yt1)  # This is for AR(p), p>1
+          }
+          else res <- lm(yt ~ xt1 + 1 + tt)     # This is for AR(1)
+          res.sum <- summary(res)
+          # Compute the test statistic
+          STAT <- res.sum$coefficients[2, 1]/res.sum$coefficients[2,2] 
+          table <- cbind(c(4.38, 4.15, 4.04, 3.99, 3.98, 3.96), # Critical values
+                         c(3.95, 3.8, 3.73, 3.69, 3.68, 3.66),
+                         c(3.6, 3.5, 3.45, 3.43, 3.42, 3.41), 
+                         c(3.24, 3.18, 3.15, 3.13, 3.13, 3.12),
+                         c(1.14, 1.19, 1.22, 1.23, 1.24, 1.25), 
+                         c(0.8, 0.87, 0.9, 0.92, 0.93, 0.94), 
+                         c(0.5, 0.58, 0.62, 0.64, 0.65, 0.66), 
+                         c(0.15, 0.24, 0.28, 0.31, 0.32, 0.33))
+          table <- -table
+          tablen <- dim(table)[2]
+          tableT <- c(25, 50, 100, 250, 500, 1e+05)
+          tablep <- c(0.01, 0.025, 0.05, 0.1, 0.9, 0.95, 0.975, 0.99)
+          tableipl <- numeric(tablen)
+          for (i in (1:tablen)) tableipl[i] <- approx(tableT, table[,i], n, rule = 2)$y
+          # The next line locates the statistic in 
+          #terms of the critical values and gives the corresponding p-value
+          interpol <- approx(tableipl, tablep, STAT, rule = 2)$y
+          if (!is.na(STAT) && is.na(approx(tableipl, tablep, STAT,rule = 1)$y))
+            if (interpol == min(tablep))
+              warning("p-value smaller than printed p-value")
+            else warning("p-value greater than printed p-value")
+          if (alternative == "stationary")
+            # If the test is H1 = stationary, then a p-value 
+            #above 0.1 will show evidence of an unit root (we are using this test)
+            PVAL <- interpol
+          else if (alternative == "explosive")
+            # If the test is H1 = explosive, then a p-value 
+            #below 0.1 will show evidence of an unit root
+            PVAL <- 1 - interpol
+          else stop("irregular alternative")
+          PARAMETER <- k - 1
+          METHOD <- "Augmented Dickey-Fuller Test"
+          names(STAT) <- "Dickey-Fuller"
+          names(PARAMETER) <- "Lag order"
+          return(data.frame(statistic = STAT, parameter = PARAMETER,
+            alternative = alternative, p.value = PVAL, method = METHOD,
+            data.name = DNAME))
+          #structure(list(statistic = STAT, parameter = PARAMETER,
+          #  alternative = alternative, p.value = PVAL, method = METHOD,
+          #  data.name = DNAME), class = "htest")
+}
+```
+
+# Assignment 4
+
+## Introduction
+
+_A large Dutch retailer of consumer goods is interested in predicting the effects of a potential increase in VAT and other consumption taxes over its sales. In particular, this retailer would like you to explore the relation between the total consumption of non-durable goods and the fluctuations in the total disposable income of families in The Netherlands. Luckily, they have turned to you for technical support on this matter!_
+
+## Importing and checking data
+
+```{r}
+urlRemote  <- "https://raw.githubusercontent.com/aishameriane"
+pathGithub <- "/Mphil/master/EconIII/data_assign_p4.csv"
+token      <- "?token=AAVGJTTQMANXABTTURLGNQS6SGRSM"
+
+url      <- paste0(urlRemote, pathGithub, token)
+dfData01 <- read.csv2(url, sep = ",", dec = ".", header = TRUE)
+```
+
+Check if everything is ok with the dataset: header and tail and summary statistics to check for missing data/outliers. The head and tail of the table bellow show us the Data set indeed starts at the first quarte of 1988 and ends at the first quarter of 2012.
+
+**PALOMA:** Eu nao entendi o que seria a variável TIME. **AISHA** É uma variável com valores numéricos que podem ser convertidos em data. No homework 3 tinha uma parecida, mas era chamada de DATE. Coloquei um código que converte a coisa.
+
+```{r,echo = FALSE}
+cbind(head(dfData01), tail(dfData01)) %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The column with the dates (`TIME`) is in numeric format and not in a nice position with respect to the order of the variables, so we will change it to y-m-d and also switch places with the `CONS` column.
+
+```{r, warning = FALSE, message = FALSE}
+dfData01$TIME <- as.Date(dfData01$TIME, origin="0001-01-01")
+dfData01      <- dfData01[,c(1,4,2,3)]
+```
+
+Next, we present the descriptive statistics for the quaterly aggregate consumption and household income. We observe that indeed there is no missing information and all values are numeric (there are no problems of formatting). 
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Descriptives
+descriptives     <- matrix(NA, nrow = 8, ncol = (ncol(dfData01)-2))
+rownames(descriptives) <- c("Observations", "Minimum", "1st quartile",
+                      "Mean", "Median",  "3rd quartile", "Maximum",
+                      "Desv. Pad.")
+
+for (i in 1:8){
+  descriptives[i, 1] <- round(as.numeric(desc(dfData01[,3])[i]),4)
+}
+
+for (i in 1:8){
+  descriptives[i, 2] <- round(as.numeric(desc(dfData01[,4])[i]),4)
+}
+
+descriptives[1,] <- as.integer(descriptives[1,])
+descriptives <- data.frame(descriptives)
+names(descriptives) <- c("Aggregate Comsumption (cons)", "Aggregate household income (inc)")
+
+descriptives %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+ 
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+tsData01 <- xts(dfData01[,3:4], order.by = as.yearqtr(dfData01[,1]), frequency = 4)
+```
+
+## Question 1
+
+_Plot both the aggregate consumption and aggregate income time-series. Compute and report 12-period ACF and PACF functions for each series and comment on their shape._
+
+Overall, both series seem to not be stationary, since the unconditional average does not seem to be constant over time. This can be seem from the fact that the series does not moves around some level. Instead, both aggregate income and consumption shows a (mostly) increasing behaviour over time. Note that, around the financial crisis of 2008, we obeserve a breaf decrease over aggregate income, but soon after the series is slowly back to its increasing trend. As for consumption, we observe a smoothening of consumption growth during the crisis (which is better seen when looking at the series alone, given the difference in scale), and a somewhat ''flat'' behaviour after-crisis, with aggregate consumption neither increasing or decreasing. When comparing both series toghether, we observe that the gap between income and consumption increased between 1987 and 2012.
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Graph for aggreagate consumption
+main_title = "Quarterly aggreagate consumption"
+plotSeriesa <- autoplot(tsData01[,1]) + 
+  theme_bw() + 
+  geom_line(color = "dark blue") + 
+  labs(title = paste(main_title), x = "Date", y="cons", subtitle = '1988Q1 to 2012Q1')
+
+p1 <- autoplot.acf01(ggPacf01(tsData01[,1], plot = FALSE, lag.max = 12, type = "correlation"))
+p2 <- autoplot.acf01(ggPacf01(tsData01[,1], plot = FALSE, lag.max = 12, type = "partial"))
+#grid.arrange(plotSeriesa, grid.arrange(p1, p2, nrow = 1), nrow = 2)
+```
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Graph for aggreagate income
+main_title = "Quarterly aggreagate income"
+plotSeriesb <- autoplot(tsData01[,2]) + 
+  theme_bw() + 
+  geom_line(color = "dark blue") + 
+  labs(title = paste(main_title), x = "Date", y="inc", subtitle = '1988Q1 to 2012Q1')
+
+p1 <- autoplot.acf01(ggPacf01(tsData01[,2], plot = FALSE, lag.max = 12, type = "correlation"))
+p2 <- autoplot.acf01(ggPacf01(tsData01[,2], plot = FALSE, lag.max = 12, type = "partial"))
+#grid.arrange(plotSeriesb, grid.arrange(p1, p2, nrow = 1), nrow = 2)
+```
+
+Looking at the ACFs, we observe a slow decay of the autocorrelation function, which offers further support for the fact that the series are not stationary - this is based also on the ACF for 60 lags, which is not reported here. The "long period ACF" shows a very slow decay in the ACF without am abrupt cut, which suggests an AR model, with no MA component. As for the PACFs, it tells us that only the first lag autocorrelations is significant. Overall, both ACF and PACF, for both aggregate consumption and income, provide evidence of autocorrelation in the series. Such autocorrelation has a persistent behaviour, even considering larger lags. Such persistence seems to result from the propagation of effects in first-lag autocorrelation. 
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE, fig.pos='h', fig.height = 3, fig.width= 7}
+grid.arrange(plotSeriesa, plotSeriesb, nrow = 1)
+```
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE, fig.pos='h', fig.height = 5, fig.width= 7}
+recessions_1 <- c("1992Q1",
+                "2008Q1",
+                "2011Q3")
+
+recessions_2 <- c("1993Q3",
+                "2009Q2",
+                "2013Q1")
+
+recessions.trim <- data.frame(1:3, 1:3, 1:3, 1:3,
+                              as.Date(as.yearqtr(recessions_1)), 
+                              as.Date(as.yearqtr(recessions_2)))
+
+names(recessions.trim) <- c("obs", "TIME", "variable", "value", "Peak", "Trough")
+
+dfData02 <- melt(dfData01, id.vars = c("obs", "TIME"))
+
+# Making the graph
+p0 <- ggplot(dfData02, 
+             aes(x = TIME, y = value, color = variable)) +
+        geom_line(alpha = 1)+
+        labs(title="Quarterly aggregate consumption and income (in Euros)", 
+                  subtitle = "1988Q1 to 2012Q1",  y = "", 
+                  x= "Date", color = "Variable") +
+        scale_colour_brewer(palette = "Set1", labels = c("GDP Growth", "Unemployment")) +
+        scale_x_date(limits = as.Date(c("1988-01-01","2012-01-01")), 
+                     date_breaks = "12 months", name = "Date", labels = date_format("%m-%Y")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), legend.position = "bottom")# +
+        #geom_rect(data=recessions.trim, aes(xmin=as.Date(recessions.trim$Peak, "%Y-%m-%d"), xmax=as.Date(recessions.trim$Trough, "%Y-%m-%d"), ymin=-Inf, ymax=+Inf), fill='grey', alpha=0.4) 
+  
+# Não sei porque está dando erro para colocar as barras das recessões, só comentei e de vez em quando eu tento arrumar (até agora não foi essa merda)
+
+p1 <- autoplot.acf01(ggPacf01(tsData01[,1], plot = FALSE, lag.max = 12, 
+                              type = "correlation"), title = "ACF from Consumption")
+p2 <- autoplot.acf01(ggPacf01(tsData01[,2], plot = FALSE, lag.max = 12, 
+                              type = "correlation"), title = "ACF from Income")
+
+p3 <- autoplot.acf01(ggPacf01(tsData01[,1], plot = FALSE, lag.max = 12, 
+                              type = "partial"), title = "PACF from Consumption")
+p4 <- autoplot.acf01(ggPacf01(tsData01[,2], plot = FALSE, lag.max = 12, 
+                              type = "partial"), title = "PACF from Income")
+
+#plotSeriesa
+#plotSeriesb
+grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
+```
+
+*PALOMA:* Eu ahco que fiz o ACF errado pq eles estao exatamente iguais. so o PACF que tem pequenas diferencas. Preciso verificar. **AISHA** Eu olhei o código e aumentei os lags pra dar uma olhada. Não acho que tenha algo estranho (conferi o código tb). A mesma coisa aconteceu no HW3. Aqui eu acho que a explicação é que consumo é uma função da renda (tanto que é um problema de cointegração) e por isso o comportamento é similar. Coloquei o bloco abaixo que tem elas duas juntas. Dá pra mudar o tamanho das fontes do eixo y dos gráficos da ACF e PACF se vc achar que fica melhor.
+
+**AISHA** Coloquei os gráficos juntos de volta, apaguei seu comentário sobre só dar pra ver com ela sozinha e adicionei isso como observação. Deixei as ACFs e PACFs como 12 meses mas coloquei uma explicação que endossa a nossa modelagem só pra AR. As barrinhas cinzas das recessões me tomaram mais de meia hora de vida e não consegui fazer funcionar, então só deixei ali mas não estamos usando.
+
+## Question 2
+_Perform an ADF unit-root test on each series using the general-to-specific approach and report the values of the test statistics. Is the unit-root hypothesis rejected in any of them?_
+
+We divided this question in two parts, one for the model fitting and another for the unit root test.
+
+### Fitting an AR(p) model
+
+Given the behavior of the ACF and PACF from the previous items, there is no clear indicator that we are dealing with an ARMA(p,q) model with $q \neq 0$. So, using the same parcimonious argument from the homework 3, we are going to fit directly an AR(q) model. In here we are also using our function from HW3 to fit all combinations of lags up until lag 4 and decide using the BIC which models fits the best, before performing the ADL test.
+
+```{r, eval = TRUE, message = FALSE, warning = FALSE, echo = FALSE}
+# Saves the best model 
+maxlag = 4
+mCons <- fEstAR(dfData01, 3, maxlag)
+mInc  <- fEstAR(dfData01, 4, maxlag)
+
+# Retrieves the coefficients vector
+coefCons <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mCons[2], 18), "[[() ]]", ""), ",", names = 1:4), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+coefInc <-  as.integer(unlist(strsplit(unite(colsplit(
+  str_replace_all(substring(mInc[2], 18), "[[() ]]", ""), ",", names = 1:2), 
+  col, sep = ",", remove = TRUE)[1,1], ",")))
+
+
+# Put together
+dfEstim <- list(coefCons, coefInc)
+
+# Fits the best model for each one of 10 series
+
+dfModels <- list(1,2)
+
+for (i in 1:2){
+  series <- i+2
+  tsData <- xts(dfData01[,series], order.by = dfData01[,2])
+  order  <- length(dfEstim[[i]])
+  fixed  <- dfEstim[[i]]
+  
+  dfModels[[i]] <- Arima(tsData, order = c(order,0,0), fixed = c(fixed, NA), 
+                         method="CSS-ML")
+}
+```
+
+**Aisha** Não deu pra testar mais do que AR(4) na renda... o pacote que estamos usando está com bastante problema computacional pra estimar usando o pacote (por ML) então tive que usar outro método, mas ele não produz o BIC (eu dei uma pesquisada e os pacotes não gostam de ajustar AR com raízes explosivas, isso pode justificar o porque está sendo complicado). Eu testei manualmente e realmente ele consegue estimar bem os modelos quando você coloca todos os lags, mas quando começa a usar o fixed(), ele já dá erro pra estimar um AR(4). Pelo tipo da mensagem de erro parece ser um problema na parte de otimização para estimar por máxima verossimilhança (malditos métodos frequentistas, haha). No fim eu deixei o método que fiz pro HW3, que testa todas combinações de coeficientes e naquelas que dá erro ele usa um método diferente do que MLE. Eu tb comparei com uma função automática, `auto.arima()`, que ajusta um monte de coisa e seleciona pelo BIC. pra renda dá ok, um ARIMA(1,1,0), mas pro consumo ele quer colocar um ARIMA(2,2,1), o que é estranho (diferenciar duas vezes e ter um componente MA). De qualquer forma um AR(4) pro consumo parece ok.
+
+The results from the best models for each series are summarized below.
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+lModels <- list(1,2)
+lTable  <- list(1,2)
+lRes    <- list(1,2)
+
+for (i in 1:length(dfModels)){
+  lRes[[i]]              <- dfModels[[i]]$residuals
+  lModels[[i]]           <- tidy(coeftest(dfModels[[i]]), stringsAsFactors = FALSE) 
+  lModels[[i]]           <- cbind(lModels[[i]][, 1], round(lModels[[i]][, 2:5], digits = 2))
+  colnames(lModels[[i]]) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+  lModels[[i]][,1]       <- c(paste0("Lag ", 1:(nrow(lModels[[i]])-1)), "Intercept")
+}
+
+lagmax = 60
+i <- 1
+  paste0("Best AR model for Consumption")
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  #p1 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+  #                            type = "correlation"), title = "ACF from the consumption AR model residuals")
+  mRes1 <- lRes[[i]]
+  
+  sigma_Res1 <- dfModels[[i]]$sigma2
+
+  p1 <- gghistogram01(mRes1, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for consumption", ylabel = "")
+  p2 <- autoplot.acf01(ggPacf01(mRes1, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for consumption")
+  
+  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(97, 0, sigma_Res1))
+  p3 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+  #grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
+  
+  # Kolmogorov-Smirnov test
+  KStest1 <- ks.test(mRes1, pnorm, 0, sigma_Res1)
+  
+i <- 2
+  paste0("Best AR model for Income")
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  #p2 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
+  #                            type = "correlation"), title = "ACF from the income AR model residuals")
+  
+  #grid.arrange(p1, p2, nrow = 2)
+  
+  mRes2 <- lRes[[i]]
+  
+  sigma_Res2 <- dfModels[[i]]$sigma2
+
+  p4 <- gghistogram01(mRes2, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for income", ylabel = "")
+  p5 <- autoplot.acf01(ggPacf01(mRes2, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for income")
+  
+  dfRes = data.frame(Residuos = mRes2, Quantis = rnorm(97, 0, sigma_Res1))
+  p6 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+  # grid.arrange(p4, grid.arrange(p5, p6, nrow = 1), nrow = 2)
+  
+  # Kolmogorov-Smirnov test
+  KStest2 <- ks.test(mRes2, pnorm, 0, sigma_Res2)
+```
+
+**Comments**: Based on the ACF for the residuals of both AR models, it looks like that we indeed have some white noise (there is one significant lag for income, however this might be due to a type I error). However, when we look at the qqplots, it seems that we have some problems at the tails (some values fall outside the confidence interval) when assuming a normal distribution. Since the question does not asks for the gaussian specification, we are not going to pursue this for now.
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE, fig.height = 5, fig.width= 7, fig.pos='h'}
+  grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
+  grid.arrange(p4, grid.arrange(p5, p6, nrow = 1), nrow = 2)
+```
+
+
+**AISHA** Eu fiz o teste de normalidade (o código ainda está ali) e ele rejeita H0, porém depois eu me lembrei que a questão não menciona isso. Então eu achei melhor não comentar. Se você achar melhor não colocar o qqplot, a gente pode deixar fora também. Dei uma arrumada nos tamanhos e na ordem pra que não tenha muitos buracos no meio. Eu não sei se é uma boa coisa que esses resíduos pareçam um ruído branco e se realmente seria caso disso acontecer quando tem uma raiz unitária, então estou dividida em deixar esses resultados aqui. Com base neles praticamente daria para falar "ajustou bem, deixa assim mesmo". Estou na dúvida também sobre os títulos dos gráficos, mas vou deixar pra voltar no final com o PDF compilado para ver o que faz mais sentido.
+
+### Unit root tests
+
+We are using the same function used for homework 3 and the reported results are shown below.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+  dfADF <- list(1,2)
+
+  for(i in 1:length(dfModels)){
+      dfADF[[i]] <- adfTest(dfData01, dfModels, i, alternative = c("stationary"))
+  }
+  
+  dfADFfinal <- data.frame(rbind(dfADF[[1]], dfADF[[2]]))
+  
+  dfADFfinal <- dfADFfinal[, c(6, 2, 1, 4)]
+  dfADFfinal[,c(3,4)] <- round(dfADFfinal[,c(3,4)], 4)
+  row.names(dfADFfinal) <- 1:2
+  colnames(dfADFfinal)  <- c("Variable", "p of AR(p)", "Test-statistic", "p-value")
+  
+  paste0("Results from the ADF test")
+  dfADFfinal %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+*Comments:* The ADF test for the Consumption AR(4) model has a test statistic of `r dfADFfinal[1,3]` (p-value = `r dfADFfinal[1,4]`) while the ADF test for the AR(2) fitted for income had a test statistic of `r dfADFfinal[2,3]` (p-value = `r dfADFfinal[2,4]`), using the null hypothesis that the series is not stationary. This means that at any reasonable confidence level (either 5% or even 10%), we do not reject the null hypothesis of heving unit roots and both series are considered explosive.
+
+**AISHA** Acho que era isso que tinha pra responder.
+
+## Question 3
+_Perform an ADF unit-root test on the first difference of each series using the general-to-specific approach and report the values of the test statistics. Is the unit-root hypothesis rejected in any of them? What do you conclude about the order of integration of these time series?_
+
+Since we did the fit in the previous question up until lag 4, we will also use this as maximum lag here. As for the differencing factor, as we discussed in class, most economic series are I(1) and very few variables exibit a I(2) behavior. To help us decide, we have below the plots of the two series after taking the first difference, as well as the ACFs and PACFs.
+
+```{r, message = FALSE, echo = FALSE, warning = FALSE}
+tsData01Diff <- diff(tsData01, 1)
+dfData01Diff <- data.frame(dfData01[2:nrow(dfData01), 1:2], tsData01Diff[2:nrow(tsData01Diff),])
+
+dfData02 <- melt(dfData01Diff, id.vars = c("obs", "TIME"))
+
+# Making the graph
+p0 <- ggplot(dfData02, 
+             aes(x = TIME, y = value, color = variable)) +
+        geom_line(alpha = 1)+
+        labs(title="Quarterly consumption and income (1st difference)", 
+                  subtitle = "1988Q1 to 2012Q1",  y = "", 
+                  x= "Date", color = "Variable") +
+        scale_colour_brewer(palette = "Set1", labels = c("Consumption", "Income")) +
+        scale_x_date(limits = as.Date(c("1988-01-01","2012-01-01")), 
+                     date_breaks = "12 months", name = "Date", labels = date_format("%m-%Y")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), legend.position = "bottom")
+
+p1 <- autoplot.acf01(ggPacf01(tsData01Diff[,1], plot = FALSE, lag.max = 12, 
+                              type = "correlation"), title = "ACF from Consumption")
+p2 <- autoplot.acf01(ggPacf01(tsData01Diff[,2], plot = FALSE, lag.max = 12, 
+                              type = "correlation"), title = "ACF from Income")
+
+p3 <- autoplot.acf01(ggPacf01(tsData01Diff[,1], plot = FALSE, lag.max = 12, 
+                              type = "partial"), title = "PACF from Consumption")
+p4 <- autoplot.acf01(ggPacf01(tsData01Diff[,2], plot = FALSE, lag.max = 12, 
+                              type = "partial"), title = "PACF from Income")
+
+grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
+```
+
+*Comments* We can see from the plots that indeed the series seem to be stationary when we take the first difference, because they move randomly around some mean and do not appear to exhibit clusters of volatility in general, with the exception maybe for the beginning of the 90s (since this is not a GARCH exercise, we will not focus on this now). There is a proeminent outlier for the Income in the aftermath of the financial crisis, while the same did not happen (at least with the same magnitude) to the consumption (this might be explained by the hypothesis that households smooth consumption and in this case could be that they used another source as income, for example, savings or loans). Overall, it seems that indeed taking the first difference the two series become stationary, so we are going to include this in our analysis. 
+
+From the ACF/PACF, we see that the income seems to have a more short dependency of its lags (in the PACF only the first lag remains significative), while for consumption it seems that the third lag still plays a role. So, without estimating, we would expect an AR(p) for consumption with a higher $p$ than for income. This is also supported by the graphs of the series: the income differenciated series is less smooth, with more proeminent jumps at every period than the consumption. **AISHA**: _Não estou conseguindo elaborar bem a ideia pra explicar, mas o que eu pensei foi o seguinte: se o consumo tem uma dependência mais de "longo prazo", então a gente esperaria ver uma curva mais suave, enquanto se você apenas olha para o curto prazo (no caso da renda), acaba sendo uma série mais "acidentada". Se estiver confuso demais (ou não fazer nenhum sentido), podemos tirar._
+
+As in the previous exercises, we will use the `Arima()` function from the forecast package, but now we will include an additional parameter for differencing the series. Given that our previous routine to test for all possible lag combinations was tailored only for fitting AR(p) models (and from the ACF/PACF analysis it seems that we are again only going up until lag 4), we are doing the procedure manually. The summary of the models are described in the tables below.
+
+**AISHA** Eu achei meio estranho esse "general-to-specific" approach, porque não consegui entender se é para fazer a primeira diferença em função da primeira, da segunda, da terceira ou se é em função apenas dos lags. Eu fiz do segundo jeito baseado no que tem no slide 29 da aula 06 (e aí fiz manualmente as combinações pra não ter que adaptar toda a função que a gente tinha)
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Find the best model for consumption
+mAR4cons_a      <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, NA, NA, NA))
+mAR4cons_a_BIC  <- mAR4cons_a$bic
+
+mAR4cons_b  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, NA,  0, NA))
+mAR4cons_b_BIC  <- mAR4cons_b$bic
+
+mAR4cons_c  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, 0,   0, NA))
+mAR4cons_c_BIC  <- mAR4cons_c$bic
+
+mAR4cons_d  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  NA,  0, NA))
+mAR4cons_d_BIC  <- mAR4cons_d$bic
+
+mAR4cons_e  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, 0,  NA, NA))
+mAR4cons_e_BIC  <- mAR4cons_e$bic
+
+mAR4cons_f  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  0,  NA, NA))
+mAR4cons_f_BIC  <- mAR4cons_f$bic
+
+mAR4cons_g  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  NA, NA, NA))
+mAR4cons_g_BIC  <- mAR4cons_g$bic
+
+mAR4cons_h  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  0,  0,  NA))
+mAR4cons_h_BIC  <- mAR4cons_h$bic
+
+mAR3cons_a  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(NA, NA, NA))
+mAR3cons_a_BIC  <- mAR3cons_a$bic
+
+mAR3cons_b  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(NA, 0, NA))
+mAR3cons_b_BIC  <- mAR3cons_b$bic
+
+mAR3cons_c  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(0, NA, NA))
+mAR3cons_c_BIC  <- mAR3cons_c$bic
+
+mAR3cons_d  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(0, 0, NA))
+mAR3cons_d_BIC  <- mAR3cons_d$bic
+
+mAR2cons_a  <- Arima(tsData01[,1], order = c(2,1,0), fixed = c(NA, NA))
+mAR2cons_a_BIC  <- mAR2cons_a$bic
+
+mAR2cons_b  <- Arima(tsData01[,1], order = c(2,1,0), fixed = c(0,  NA))
+mAR2cons_b_BIC  <- mAR2cons_b$bic
+
+mAR1cons_a  <- Arima(tsData01[,1], order = c(1,1,0))
+mAR1cons_a_BIC  <- mAR1cons_a$bic
+
+BIC_cons <- data.frame(mAR4cons_a_BIC, mAR4cons_b_BIC, mAR4cons_c_BIC, mAR4cons_d_BIC,
+      mAR4cons_e_BIC, mAR4cons_f_BIC, mAR4cons_g_BIC, mAR4cons_h_BIC,
+      mAR3cons_a_BIC, mAR3cons_b_BIC, mAR3cons_c_BIC,
+      mAR2cons_a_BIC, mAR2cons_b_BIC, mAR1cons_a_BIC)
+#colnames(BIC_cons)[which(BIC_cons == min(BIC_cons))]
+# Selected model for consumption is AR4 model g
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Find the best model for income
+mAR4inc_a      <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, NA, NA, NA))
+mAR4inc_a_BIC  <- mAR4inc_a$bic
+
+mAR4inc_b  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, NA,  0, NA))
+mAR4inc_b_BIC  <- mAR4inc_b$bic
+
+mAR4inc_c  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, 0,   0, NA))
+mAR4inc_c_BIC  <- mAR4inc_c$bic
+
+mAR4inc_d  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  NA,  0, NA))
+mAR4inc_d_BIC  <- mAR4inc_d$bic
+
+mAR4inc_e  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, 0,  NA, NA))
+mAR4inc_e_BIC  <- mAR4inc_e$bic
+
+mAR4inc_f  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  0,  NA, NA))
+mAR4inc_f_BIC  <- mAR4inc_f$bic
+
+mAR4inc_g  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  NA, NA, NA))
+mAR4inc_g_BIC  <- mAR4inc_g$bic
+
+mAR4inc_h  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  0,  0,  NA))
+mAR4inc_h_BIC  <- mAR4inc_h$bic
+
+mAR3inc_a  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(NA, NA, NA))
+mAR3inc_a_BIC  <- mAR3inc_a$bic
+
+mAR3inc_b  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(NA, 0, NA))
+mAR3inc_b_BIC  <- mAR3inc_b$bic
+
+mAR3inc_c  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(0, NA, NA))
+mAR3inc_c_BIC  <- mAR3inc_c$bic
+
+mAR3inc_d  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(0, 0, NA))
+mAR3inc_d_BIC  <- mAR3inc_d$bic
+
+mAR2inc_a  <- Arima(tsData01[,2], order = c(2,1,0), fixed = c(NA, NA))
+mAR2inc_a_BIC  <- mAR2inc_a$bic
+
+mAR2inc_b  <- Arima(tsData01[,2], order = c(2,1,0), fixed = c(0,  NA))
+mAR2inc_b_BIC  <- mAR2inc_b$bic
+
+mAR1inc_a  <- Arima(tsData01[,2], order = c(1,1,0))
+mAR1inc_a_BIC  <- mAR1inc_a$bic
+
+BIC_inc <- data.frame(mAR4inc_a_BIC, mAR4inc_b_BIC, mAR4inc_c_BIC, mAR4inc_d_BIC,
+      mAR4inc_e_BIC, mAR4inc_f_BIC, mAR4inc_g_BIC, mAR4inc_h_BIC,
+      mAR3inc_a_BIC, mAR3inc_b_BIC, mAR3inc_c_BIC,
+      mAR2inc_a_BIC, mAR2inc_b_BIC, mAR1inc_a_BIC)
+#colnames(BIC_inc)[which(BIC_inc == min(BIC_inc))]
+# Selected model for income is an AR1
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+dfModels <- list(mAR4cons_g, mAR1inc_a)
+lModels <- list(1,2)
+lTable  <- list(1,2)
+lRes    <- list(1,2)
+
+for (i in 1:length(dfModels)){
+  lRes[[i]]              <- dfModels[[i]]$residuals
+  lModels[[i]]           <- tidy(coeftest(dfModels[[i]]), stringsAsFactors = FALSE) 
+  lModels[[i]]           <- cbind(lModels[[i]][, 1], round(lModels[[i]][, 2:5], digits = 2))
+  colnames(lModels[[i]]) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+    if (i==2){
+      lModels[[i]][,1]       <- c("Lag 1")
+    } else{
+      lModels[[i]][,1]       <- c("Lag 2", "Lag 3", "Lag 4")
+    }
+}
+
+lagmax = 60
+i <- 1
+  paste0("Best AR model for Consumption")
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  mRes1 <- lRes[[i]]
+  
+  sigma_Res1 <- dfModels[[i]]$sigma2
+
+  p1 <- gghistogram01(mRes1, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for consumption", ylabel = "")
+  p2 <- autoplot.acf01(ggPacf01(mRes1, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for consumption")
+  
+  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(97, 0, sigma_Res1))
+  p3 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+
+i <- 2
+  paste0("Best AR model for Income")
+  lModels[[i]] %>% 
+                kable("latex") %>% 
+                kable_styling(bootstrap_options = c("striped", "hover"))
+  
+  mRes2 <- lRes[[i]]
+  
+  sigma_Res2 <- dfModels[[i]]$sigma2
+
+  p4 <- gghistogram01(mRes2, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for income", ylabel = "")
+  p5 <- autoplot.acf01(ggPacf01(mRes2, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for income")
+  
+  dfRes = data.frame(Residuos = mRes2, Quantis = rnorm(97, 0, sigma_Res1))
+  p6 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE, fig.height = 5, fig.width= 7, fig.pos='h'}
+  grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
+  grid.arrange(p4, grid.arrange(p5, p6, nrow = 1), nrow = 2)
+```
+
+**Comments:** Different from before differenciating the series, the residuals now fall whithin the confidence bands of the qqplot (assuming a gaussian distribution). Also, we see from the ACF and PACF that we don't have significant lags, except for the 8th lag of the consumption residuals. Given that the confidence bands are not with 100% confidence, it might be only due to a type I error.
+
+**AISHA:** Cheguei a pensar que pode ser culpa ~do PT~ do outlier da crise, mas não sei se faz sentido porque essa PACF em teoria deveria servir para qualquer momento a partir do qual a gente calcula. Então joguei como erro tipo I. 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+  dfADF <- list(1,2)
+  lagmax <- c(1,4)
+  
+
+  for(i in 1:length(dfModels)){
+      dfADF[[i]]  <- adf.test(tsData01Diff[2:nrow(tsData01Diff),i], k = lagmax[i])
+  }
+  
+  dfADFfinal <- matrix(NA, ncol = 4, nrow = 2)
+  dfADFfinal <- data.frame(dfADFfinal)
+  dfADFfinal[,1] <- c("Consumption", "Income")
+  dfADFfinal[,2] <- c(dfADF[[1]]$parameter, dfADF[[2]]$parameter)
+  dfADFfinal[,3] <- round(c(dfADF[[1]]$statistic, dfADF[[2]]$statistic),4)
+  dfADFfinal[,4] <- round(c(dfADF[[1]]$p.value, dfADF[[2]]$p.value),4)
+  colnames(dfADFfinal)  <- c("Variable", "p of AR(p)", "Test-statistic", "p-value")
+
+  paste0("Results from the ADF test")
+    dfADFfinal %>% 
+    kable("latex") %>% 
+    kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Comments**: Using a graphical analysis, we see that the residuals are similar to the ones that we found previously when fitting an AR model in terms of the ACF/PACF, but have a better fit to the QQplot staying inside the confidence intervals. As for the ADF test, now we are able to reject the null hipothesis that the series are explosive, using a confidence level of 95%.
+
+**AISHA** Eu tive que mudar pra usar a função original do R (aconteceu no HW3 tb) porque não consegui usar com os modelos que foram estimados. Eu forcei um AR(4) completo pro consumo e um AR(1) pra renda, senão o ADF não saia correto (aparentemente ele tem problema pra estimar quando faltam os lags intermediários, mas não é sempre que isso acontece).
+
+## Question 4
+
+_Assuming both series are I(1), test for cointegration between consumption and income by re-gressing consumption on income and performing a unit-root test on the residuals. Report the estimated regression coefficients. Plot the regression residuals. Use the Schwartz Information Criterion (SIC) to determine the number of ADF lags in your unit-root residual test. Report the cointegration test statistic. Do you reject cointegration?_
+
+**AISHA** Eu achei estranho o termo ADF lags, imagino que ele esteja falando dos lags do erro Zt.
+
+We will follow the steps described in Lecture 7, slide 22:
+
+  1. Run a static regression of Consumption ($Y_t$) on Income ($X_t$)
+  $$Cons_t = \delta + \lambda Inc_t + Z_t$$
+  The option for the consumption as the exogenous variable is because the households are constrained by their available income (i.e., income will determine how much you can purchase in goods and services) and not the otherway around - it is not reasonable to expect that our wage will be higher just because we want to buy a new laptop;
+  2. Obtain the estimates for $\hat{\delta}$ and $\hat{\lambda}$;
+  3. Obtain the estimated residuals
+  $$\hat{Z}_t = Cons_t - \hat{\delta} - \hat{\lambda} Inc_t $$;
+  4. Test if the series of the residuals has a unit root, i.e., test whether $\hat{Z}_t \sim I(0)$ using the appropriate critical values.
+
+```{r, echo = FALSE}
+  
+```
+
+
+## Question 5
+_Estimate an error correction model for consumption using the estimated residuals from the cointegration regression above. Use a general-to-specific modeling approach for the short-run dynamics. Report the estimated model. Report and interpret the short-run and long-run multipliers. Report and interpret the error correction coefficient._
+
+
+## Question 6
+_How strong is the correction to equilibrium? Is there over-shooting? Do you and evidence of Granger causality? Justify your answer._
+
+
+## Question 7
+_At the peak of the recession, during the 2nd quarter of 2009, you are asked to forecast the value of consumption for the 3rd quarter of 2009. Do you expect aggregate consumption to raise or fall? Report the predicted change in the value of consumption. How much of this change in consumption is due to the `correction mechanism' alone? Report your point forecast for consumption for the 3rd quarter of 2009._
