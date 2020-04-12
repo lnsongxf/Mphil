@@ -1,22 +1,23 @@
 ---
 title: "Econometrics III HW - part 4"
 author: "A. Schmidt and P. Assunção"
-date: "3-4-2020"
+date: "April, 2020"
 output:
   pdf_document: default
   html_document:
     df_print: paged
+bibliography: references.bib
 ---
 
 # Loading packages and helper functions
 
-See the source code if interested in all functions (chunks were ommited unless relevant for the assignment).
+See the source code if interested in all functions (chunks were ommited unless relevant for the assignment). Click [here](https://raw.githubusercontent.com/aishameriane/Mphil/master/EconIII/HW4.Rmd?token=AAVGJTXHPWQBPFUYGN4BFT26TLHII) to access the code.
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
 # Verify if a package is already installed, if not, download and install before loading. 
 chooseCRANmirror(graphics = FALSE, ind = 10)
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries, lubridate, scales, tictoc, stringr, tidyr, urca)
+pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries, lubridate, scales, tictoc, stringr, tidyr, urca, DataCombine)
 ```
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
@@ -653,15 +654,13 @@ _A large Dutch retailer of consumer goods is interested in predicting the effect
 ```{r}
 urlRemote  <- "https://raw.githubusercontent.com/aishameriane"
 pathGithub <- "/Mphil/master/EconIII/data_assign_p4.csv"
-token      <- "?token=AAVGJTTQMANXABTTURLGNQS6SGRSM"
+token      <- "?token=AAVGJTREMSHGOMB4JUOXYGC6TLPEY"
 
 url      <- paste0(urlRemote, pathGithub, token)
 dfData01 <- read.csv2(url, sep = ",", dec = ".", header = TRUE)
 ```
 
 Check if everything is ok with the dataset: header and tail and summary statistics to check for missing data/outliers. The head and tail of the table bellow show us the Data set indeed starts at the first quarte of 1988 and ends at the first quarter of 2012.
-
-**PALOMA:** Eu nao entendi o que seria a variável TIME. **AISHA** É uma variável com valores numéricos que podem ser convertidos em data. No homework 3 tinha uma parecida, mas era chamada de DATE. Coloquei um código que converte a coisa.
 
 ```{r,echo = FALSE}
 cbind(head(dfData01), tail(dfData01)) %>% 
@@ -711,7 +710,7 @@ tsData01 <- xts(dfData01[,3:4], order.by = as.yearqtr(dfData01[,1]), frequency =
 
 _Plot both the aggregate consumption and aggregate income time-series. Compute and report 12-period ACF and PACF functions for each series and comment on their shape._
 
-Overall, both series seem to not be stationary, since the unconditional average does not seem to be constant over time. This can be seem from the fact that the series does not moves around some level. Instead, both aggregate income and consumption shows a (mostly) increasing behaviour over time. Note that, around the financial crisis of 2008, we obeserve a breaf decrease over aggregate income, but soon after the series is slowly back to its increasing trend. As for consumption, we observe a smoothening of consumption growth during the crisis (which is better seen when looking at the series alone, given the difference in scale), and a somewhat ''flat'' behaviour after-crisis, with aggregate consumption neither increasing or decreasing. When comparing both series toghether, we observe that the gap between income and consumption increased between 1987 and 2012.
+Based on the visual inspection (prior to formaly testing), both series seem to not be stationary, since the unconditional average does not seem to be constant over time. This can be seem from the fact that the series does not moves around some level: both aggregate income and consumption shows a linear positive increasing behaviour over time. Note that, around the financial crisis of 2008, we obeserve a breaf decrease over aggregate income, but soon after the series is slowly back to its increasing trend. As for consumption, we observe a smoothening of consumption growth during the crisis (which is better seen when looking at the series alone, given the difference in scale), and a somewhat ''flat'' behaviour after-crisis, with aggregate consumption neither increasing or decreasing. When comparing both series toghether, we observe that the gap between income and consumption increased between 1987 and 2012.
 
 ```{r, message= FALSE, warning= FALSE, echo = FALSE}
 # Graph for aggreagate consumption
@@ -739,27 +738,13 @@ p2 <- autoplot.acf01(ggPacf01(tsData01[,2], plot = FALSE, lag.max = 12, type = "
 #grid.arrange(plotSeriesb, grid.arrange(p1, p2, nrow = 1), nrow = 2)
 ```
 
-Looking at the ACFs, we observe a slow decay of the autocorrelation function, which offers further support for the fact that the series are not stationary - this is based also on the ACF for 60 lags, which is not reported here. The "long period ACF" shows a very slow decay in the ACF without am abrupt cut, which suggests an AR model, with no MA component. As for the PACFs, it tells us that only the first lag autocorrelations is significant. Overall, both ACF and PACF, for both aggregate consumption and income, provide evidence of autocorrelation in the series. Such autocorrelation has a persistent behaviour, even considering larger lags. Such persistence seems to result from the propagation of effects in first-lag autocorrelation. 
+Looking at the ACFs, we observe a slow decay of the autocorrelation function and several positive significant lags at a 5% significance level, which offers further support for the fact that the series are not stationary - this is based also on the ACF for 60 lags, which is not reported here. It is also important to notice that this result would be sustained even for other confidence levels such as 90% or lower. The "long period ACF" shows a very slow decay in the ACF without an abrupt cut, which suggests an AR model, with no MA component. As for the PACFs, it tells us that only the first lag autocorrelations is significant. Overall, both ACF and PACF, for both aggregate consumption and income, provide evidence of autocorrelation in the series. Such autocorrelation has a persistent behaviour, even considering larger lags.
 
 ```{r, message= FALSE, warning= FALSE, echo = FALSE, fig.pos='h', fig.height = 3, fig.width= 7}
 grid.arrange(plotSeriesa, plotSeriesb, nrow = 1)
 ```
 
 ```{r, message= FALSE, warning= FALSE, echo = FALSE, fig.pos='h', fig.height = 5, fig.width= 7}
-recessions_1 <- c("1992Q1",
-                "2008Q1",
-                "2011Q3")
-
-recessions_2 <- c("1993Q3",
-                "2009Q2",
-                "2013Q1")
-
-recessions.trim <- data.frame(1:3, 1:3, 1:3, 1:3,
-                              as.Date(as.yearqtr(recessions_1)), 
-                              as.Date(as.yearqtr(recessions_2)))
-
-names(recessions.trim) <- c("obs", "TIME", "variable", "value", "Peak", "Trough")
-
 dfData02 <- melt(dfData01, id.vars = c("obs", "TIME"))
 
 # Making the graph
@@ -773,10 +758,7 @@ p0 <- ggplot(dfData02,
         scale_x_date(limits = as.Date(c("1988-01-01","2012-01-01")), 
                      date_breaks = "12 months", name = "Date", labels = date_format("%m-%Y")) +
         theme_bw() +
-        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), legend.position = "bottom")# +
-        #geom_rect(data=recessions.trim, aes(xmin=as.Date(recessions.trim$Peak, "%Y-%m-%d"), xmax=as.Date(recessions.trim$Trough, "%Y-%m-%d"), ymin=-Inf, ymax=+Inf), fill='grey', alpha=0.4) 
-  
-# Não sei porque está dando erro para colocar as barras das recessões, só comentei e de vez em quando eu tento arrumar (até agora não foi essa merda)
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), legend.position = "bottom")
 
 p1 <- autoplot.acf01(ggPacf01(tsData01[,1], plot = FALSE, lag.max = 12, 
                               type = "correlation"), title = "ACF from Consumption")
@@ -788,14 +770,8 @@ p3 <- autoplot.acf01(ggPacf01(tsData01[,1], plot = FALSE, lag.max = 12,
 p4 <- autoplot.acf01(ggPacf01(tsData01[,2], plot = FALSE, lag.max = 12, 
                               type = "partial"), title = "PACF from Income")
 
-#plotSeriesa
-#plotSeriesb
 grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
 ```
-
-*PALOMA:* Eu ahco que fiz o ACF errado pq eles estao exatamente iguais. so o PACF que tem pequenas diferencas. Preciso verificar. **AISHA** Eu olhei o código e aumentei os lags pra dar uma olhada. Não acho que tenha algo estranho (conferi o código tb). A mesma coisa aconteceu no HW3. Aqui eu acho que a explicação é que consumo é uma função da renda (tanto que é um problema de cointegração) e por isso o comportamento é similar. Coloquei o bloco abaixo que tem elas duas juntas. Dá pra mudar o tamanho das fontes do eixo y dos gráficos da ACF e PACF se vc achar que fica melhor.
-
-**AISHA** Coloquei os gráficos juntos de volta, apaguei seu comentário sobre só dar pra ver com ela sozinha e adicionei isso como observação. Deixei as ACFs e PACFs como 12 meses mas coloquei uma explicação que endossa a nossa modelagem só pra AR. As barrinhas cinzas das recessões me tomaram mais de meia hora de vida e não consegui fazer funcionar, então só deixei ali mas não estamos usando.
 
 ## Question 2
 _Perform an ADF unit-root test on each series using the general-to-specific approach and report the values of the test statistics. Is the unit-root hypothesis rejected in any of them?_
@@ -804,7 +780,9 @@ We divided this question in two parts, one for the model fitting and another for
 
 ### Fitting an AR(p) model
 
-Given the behavior of the ACF and PACF from the previous items, there is no clear indicator that we are dealing with an ARMA(p,q) model with $q \neq 0$. So, using the same parcimonious argument from the homework 3, we are going to fit directly an AR(q) model. In here we are also using our function from HW3 to fit all combinations of lags up until lag 4 and decide using the BIC which models fits the best, before performing the ADL test.
+Given the behavior of the ACF and PACF from the previous items, there is no clear indicator that we are dealing with an ARMA(p,q) model with $q \neq 0$. So, using the same parcimonious argument from the Homework 3 (which helps to avoid parameter redundancy, as discussed in Chapter 7 of @box2015), we are going to fit directly an AR(q) model. In here we are also using our function from HW3 to run models with different lags up until lag 4 and decide using the BIC which models fits the best, before performing the ADL test. 
+
+About the choice of $p = 4$ as maximum lag, we tried to use more lags, but this incurred in numerical errors when using the `Arima()` function. More specifically, the method is based on ML estimation and requires to invert a Hessian matrix at some point, but depending on the specification of the model, this matrix will not be (numerically) non-singular, causing the algorithm to crash. Upon further investigation, we found out that the function does not return a model with inverse roots outside the unit circle (source: https://otexts.com/fpp2/arima-r.html). As we are going to find out in this homework, both series are $I(1)$ and hence this might be the (unit) root of the problem with the algorithm. Nevertheless, we considered that starting from an AR(4) is a fair start because this represents an entire year in terms of our series.
 
 ```{r, eval = TRUE, message = FALSE, warning = FALSE, echo = FALSE}
 # Saves the best model 
@@ -824,7 +802,7 @@ coefInc <-  as.integer(unlist(strsplit(unite(colsplit(
 # Put together
 dfEstim <- list(coefCons, coefInc)
 
-# Fits the best model for each one of 10 series
+# Fits the best model for each series
 
 dfModels <- list(1,2)
 
@@ -839,9 +817,9 @@ for (i in 1:2){
 }
 ```
 
-**Aisha** Não deu pra testar mais do que AR(4) na renda... o pacote que estamos usando está com bastante problema computacional pra estimar usando o pacote (por ML) então tive que usar outro método, mas ele não produz o BIC (eu dei uma pesquisada e os pacotes não gostam de ajustar AR com raízes explosivas, isso pode justificar o porque está sendo complicado). Eu testei manualmente e realmente ele consegue estimar bem os modelos quando você coloca todos os lags, mas quando começa a usar o fixed(), ele já dá erro pra estimar um AR(4). Pelo tipo da mensagem de erro parece ser um problema na parte de otimização para estimar por máxima verossimilhança (malditos métodos frequentistas, haha). No fim eu deixei o método que fiz pro HW3, que testa todas combinações de coeficientes e naquelas que dá erro ele usa um método diferente do que MLE. Eu tb comparei com uma função automática, `auto.arima()`, que ajusta um monte de coisa e seleciona pelo BIC. pra renda dá ok, um ARIMA(1,1,0), mas pro consumo ele quer colocar um ARIMA(2,2,1), o que é estranho (diferenciar duas vezes e ter um componente MA). De qualquer forma um AR(4) pro consumo parece ok.
+The results from the best models for each series are summarized below. As pointed out in the feedback for parts 1, 2 and 3, the `Arima()` package does not compute the intercept when the AR component is present in the model. We therefore adjusted our code to make notation and computation consistent (more specifically, our tables now exhibits "mean" instead "intercept", as suggested in [this post by Prof. Stoffer](https://www.stat.pitt.edu/stoffer/tsa2/Rissues.htm)).
 
-The results from the best models for each series are summarized below.
+We notice that for the consumption model, the statistics for the mean of the process are treated as `NaN` (not a number) - more speciffically, the problem starts with the standard error, which is then carried on to the t-statistics and subsequently to the p-value. This also supports the hypothesis that there is something suspicious with the series and it requires further investigation to assume a model, in particular to assume stationarity (since this holds only when the first two unconditional momments are well defined). As for the income, we see that it has some (very high mean) and a finite standard error which is also very high.
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
 lModels <- list(1,2)
@@ -853,7 +831,7 @@ for (i in 1:length(dfModels)){
   lModels[[i]]           <- tidy(coeftest(dfModels[[i]]), stringsAsFactors = FALSE) 
   lModels[[i]]           <- cbind(lModels[[i]][, 1], round(lModels[[i]][, 2:5], digits = 2))
   colnames(lModels[[i]]) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
-  lModels[[i]][,1]       <- c(paste0("Lag ", 1:(nrow(lModels[[i]])-1)), "Intercept")
+  lModels[[i]][,1]       <- c(paste0("Lag ", 1:(nrow(lModels[[i]])-1)), "Mean")
 }
 
 lagmax = 60
@@ -862,9 +840,7 @@ i <- 1
   lModels[[i]] %>% 
                 kable("latex") %>% 
                 kable_styling(bootstrap_options = c("striped", "hover"))
-  
-  #p1 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
-  #                            type = "correlation"), title = "ACF from the consumption AR model residuals")
+
   mRes1 <- lRes[[i]]
   
   sigma_Res1 <- dfModels[[i]]$sigma2
@@ -872,12 +848,11 @@ i <- 1
   p1 <- gghistogram01(mRes1, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for consumption", ylabel = "")
   p2 <- autoplot.acf01(ggPacf01(mRes1, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for consumption")
   
-  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(97, 0, sigma_Res1))
-  p3 <- ggqqplot(dfRes, x = "Quantis",
+  dfRes = data.frame(Residuos = mRes1, Quantiles = rnorm(97, 0, sigma_Res1))
+  p3 <- ggqqplot(dfRes, x = "Quantiles",
    palette = c("#0073C2FF", "#FC4E07"),
    ggtheme = theme_pubclean())
-  #grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
-  
+
   # Kolmogorov-Smirnov test
   KStest1 <- ks.test(mRes1, pnorm, 0, sigma_Res1)
   
@@ -886,12 +861,7 @@ i <- 2
   lModels[[i]] %>% 
                 kable("latex") %>% 
                 kable_styling(bootstrap_options = c("striped", "hover"))
-  
-  #p2 <- autoplot.acf01(ggPacf01(lRes[[i]], plot = FALSE, lag.max = lagmax, 
-  #                            type = "correlation"), title = "ACF from the income AR model residuals")
-  
-  #grid.arrange(p1, p2, nrow = 2)
-  
+
   mRes2 <- lRes[[i]]
   
   sigma_Res2 <- dfModels[[i]]$sigma2
@@ -899,25 +869,22 @@ i <- 2
   p4 <- gghistogram01(mRes2, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for income", ylabel = "")
   p5 <- autoplot.acf01(ggPacf01(mRes2, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for income")
   
-  dfRes = data.frame(Residuos = mRes2, Quantis = rnorm(97, 0, sigma_Res1))
-  p6 <- ggqqplot(dfRes, x = "Quantis",
+  dfRes = data.frame(Residuos = mRes2, Quantiles = rnorm(97, 0, sigma_Res1))
+  p6 <- ggqqplot(dfRes, x = "Quantiles",
    palette = c("#0073C2FF", "#FC4E07"),
    ggtheme = theme_pubclean())
-  # grid.arrange(p4, grid.arrange(p5, p6, nrow = 1), nrow = 2)
-  
+
   # Kolmogorov-Smirnov test
   KStest2 <- ks.test(mRes2, pnorm, 0, sigma_Res2)
 ```
 
-**Comments**: Based on the ACF for the residuals of both AR models, it looks like that we indeed have some white noise (there is one significant lag for income, however this might be due to a type I error). However, when we look at the qqplots, it seems that we have some problems at the tails (some values fall outside the confidence interval) when assuming a normal distribution. Since the question does not asks for the gaussian specification, we are not going to pursue this for now.
+*Comments*: Based on the ACF for the residuals of both AR models using a significance level of 5%, it looks like that we have a white noise (there is one significant lag for income around $h=8$ and one for consumption around $h=31$, however this could be due to a type I error). However, when we look at the QQplots, it seems that we have some problems on the income residuals (several values fall outside the 95% confidence interval) when assuming a normal distribution. Since the question does not asks for the gaussian specification, we are not going to pursue this for now.
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE, fig.height = 5, fig.width= 7, fig.pos='h'}
   grid.arrange(p1, grid.arrange(p2, p3, nrow = 1), nrow = 2)
   grid.arrange(p4, grid.arrange(p5, p6, nrow = 1), nrow = 2)
 ```
 
-
-**AISHA** Eu fiz o teste de normalidade (o código ainda está ali) e ele rejeita H0, porém depois eu me lembrei que a questão não menciona isso. Então eu achei melhor não comentar. Se você achar melhor não colocar o qqplot, a gente pode deixar fora também. Dei uma arrumada nos tamanhos e na ordem pra que não tenha muitos buracos no meio. Eu não sei se é uma boa coisa que esses resíduos pareçam um ruído branco e se realmente seria caso disso acontecer quando tem uma raiz unitária, então estou dividida em deixar esses resultados aqui. Com base neles praticamente daria para falar "ajustou bem, deixa assim mesmo". Estou na dúvida também sobre os títulos dos gráficos, mas vou deixar pra voltar no final com o PDF compilado para ver o que faz mais sentido.
 
 ### Unit root tests
 
@@ -943,16 +910,14 @@ We are using the same function used for homework 3 and the reported results are 
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-*Comments:* The ADF test for the Consumption AR(4) model has a test statistic of `r dfADFfinal[1,3]` (p-value = `r dfADFfinal[1,4]`) while the ADF test for the AR(2) fitted for income had a test statistic of `r dfADFfinal[2,3]` (p-value = `r dfADFfinal[2,4]`), using the null hypothesis that the series is not stationary. This means that at any reasonable confidence level (either 5% or even 10%), we do not reject the null hypothesis of heving unit roots and both series are considered explosive.
-
-**AISHA** Acho que era isso que tinha pra responder.
+*Comments:* The ADF test for the Consumption AR(4) model has a test statistic of `r dfADFfinal[1,3]` (p-value = `r dfADFfinal[1,4]`) while the ADF test for the AR(2) fitted for income had a test statistic of `r dfADFfinal[2,3]` (p-value = `r dfADFfinal[2,4]`), using the null hypothesis that the series is not stationary. This means that at any reasonable confidence level (either 5% or even 10%), we do not reject the null hypothesis of heving unit roots and both series are considered non-stationary.
 
 ## Question 3
 _Perform an ADF unit-root test on the first difference of each series using the general-to-specific approach and report the values of the test statistics. Is the unit-root hypothesis rejected in any of them? What do you conclude about the order of integration of these time series?_
 
-Since we did the fit in the previous question up until lag 4, we will also use this as maximum lag here. As for the differencing factor, as we discussed in class, most economic series are I(1) and very few variables exibit a I(2) behavior. To help us decide, we have below the plots of the two series after taking the first difference, as well as the ACFs and PACFs.
+Since we did the fit in the previous question up until lag 4, we will also use this as maximum lag here. As for the differencing factor, as we discussed in class, several series in economics are $I(1)$ and very few variables exibit a $I(2)$ behavior. To help us decide, we have below the plots of the two series after taking the first difference, as well as the ACFs and PACFs.
 
-```{r, message = FALSE, echo = FALSE, warning = FALSE}
+```{r, message = FALSE, echo = FALSE, warning = FALSE} 
 tsData01Diff <- diff(tsData01, 1)
 dfData01Diff <- data.frame(dfData01[2:nrow(dfData01), 1:2], tsData01Diff[2:nrow(tsData01Diff),])
 
@@ -984,59 +949,60 @@ p4 <- autoplot.acf01(ggPacf01(tsData01Diff[,2], plot = FALSE, lag.max = 12,
 grid.arrange(p0, grid.arrange(p1, p2, p3, p4, nrow = 2), nrow = 2)
 ```
 
-*Comments* We can see from the plots that indeed the series seem to be stationary when we take the first difference, because they move randomly around some mean and do not appear to exhibit clusters of volatility in general, with the exception maybe for the beginning of the 90s (since this is not a GARCH exercise, we will not focus on this now). There is a proeminent outlier for the Income in the aftermath of the financial crisis, while the same did not happen (at least with the same magnitude) to the consumption (this might be explained by the hypothesis that households smooth consumption and in this case could be that they used another source as income, for example, savings or loans). Overall, it seems that indeed taking the first difference the two series become stationary, so we are going to include this in our analysis. 
+*Comments* We can see from the plots that the series seems to be stationary (only based on the visual inspection, but testing is needed to verify this hypothesis) when we take the first difference, because they move randomly around some mean and do not appear to exhibit clusters of volatility in general, with the exception maybe for the beginning of the 90s (since this is not a GARCH exercise, we will not focus on this now).
 
-From the ACF/PACF, we see that the income seems to have a more short dependency of its lags (in the PACF only the first lag remains significative), while for consumption it seems that the third lag still plays a role. So, without estimating, we would expect an AR(p) for consumption with a higher $p$ than for income. This is also supported by the graphs of the series: the income differenciated series is less smooth, with more proeminent jumps at every period than the consumption. **AISHA**: _Não estou conseguindo elaborar bem a ideia pra explicar, mas o que eu pensei foi o seguinte: se o consumo tem uma dependência mais de "longo prazo", então a gente esperaria ver uma curva mais suave, enquanto se você apenas olha para o curto prazo (no caso da renda), acaba sendo uma série mais "acidentada". Se estiver confuso demais (ou não fazer nenhum sentido), podemos tirar._
+There is a proeminent outlier for the Income in the aftermath of the financial crisis, while the same did not happen (at least with the same magnitude) to the consumption. This might be explained by the hypothesis that households smooth consumption and in this case could be that they used another source as income, for example, savings or loans. Overall, it seems that, by taking the first difference, we were able to remove the positive linear trend from before.
 
-As in the previous exercises, we will use the `Arima()` function from the forecast package, but now we will include an additional parameter for differencing the series. Given that our previous routine to test for all possible lag combinations was tailored only for fitting AR(p) models (and from the ACF/PACF analysis it seems that we are again only going up until lag 4), we are doing the procedure manually. The summary of the models are described in the tables below.
+From the ACF/PACF, we see that the income seems to have a more short dependency of its lags (in the PACF only the first lag remains significative), while for consumption it seems that the third still plays a role. So, without estimating, we would expect an AR(p) for consumption with a higher $p$ than for income. This is also supported by the graphs of the series: the income differenciated series is less smooth, with more proeminent jumps at every period than the consumption.
 
-**AISHA** Eu achei meio estranho esse "general-to-specific" approach, porque não consegui entender se é para fazer a primeira diferença em função da primeira, da segunda, da terceira ou se é em função apenas dos lags. Eu fiz do segundo jeito baseado no que tem no slide 29 da aula 06 (e aí fiz manualmente as combinações pra não ter que adaptar toda a função que a gente tinha)
+As in the previous exercises, we will use the `Arima()` function from the forecast package, the change is that we are doing the combinations for the differenciated series. 
 
 ```{r, echo = FALSE, warning = FALSE, message = FALSE}
+tsDataDiff <- tsData01Diff[-1]
 # Find the best model for consumption
-mAR4cons_a      <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, NA, NA, NA))
+mAR4cons_a      <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(NA, NA, NA, NA, NA))
 mAR4cons_a_BIC  <- mAR4cons_a$bic
 
-mAR4cons_b  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, NA,  0, NA))
+mAR4cons_b  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(NA, NA,  0, NA, NA))
 mAR4cons_b_BIC  <- mAR4cons_b$bic
 
-mAR4cons_c  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, 0,   0, NA))
+mAR4cons_c  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(NA, 0,   0, NA, NA))
 mAR4cons_c_BIC  <- mAR4cons_c$bic
 
-mAR4cons_d  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  NA,  0, NA))
+mAR4cons_d  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(0,  NA,  0, NA, NA))
 mAR4cons_d_BIC  <- mAR4cons_d$bic
 
-mAR4cons_e  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(NA, 0,  NA, NA))
+mAR4cons_e  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(NA, 0,  NA, NA, NA))
 mAR4cons_e_BIC  <- mAR4cons_e$bic
 
-mAR4cons_f  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  0,  NA, NA))
+mAR4cons_f  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(0,  0,  NA, NA, NA))
 mAR4cons_f_BIC  <- mAR4cons_f$bic
 
-mAR4cons_g  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  NA, NA, NA))
+mAR4cons_g  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(0,  NA, NA, NA, NA))
 mAR4cons_g_BIC  <- mAR4cons_g$bic
 
-mAR4cons_h  <- Arima(tsData01[,1], order = c(4,1,0), fixed = c(0,  0,  0,  NA))
+mAR4cons_h  <- Arima(tsDataDiff[,1], order = c(4,0,0), fixed = c(0,  0,  0,  NA, NA))
 mAR4cons_h_BIC  <- mAR4cons_h$bic
 
-mAR3cons_a  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(NA, NA, NA))
+mAR3cons_a  <- Arima(tsDataDiff[,1], order = c(3,0,0), fixed = c(NA, NA, NA, NA))
 mAR3cons_a_BIC  <- mAR3cons_a$bic
 
-mAR3cons_b  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(NA, 0, NA))
+mAR3cons_b  <- Arima(tsDataDiff[,1], order = c(3,0,0), fixed = c(NA, 0, NA, NA))
 mAR3cons_b_BIC  <- mAR3cons_b$bic
 
-mAR3cons_c  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(0, NA, NA))
+mAR3cons_c  <- Arima(tsDataDiff[,1], order = c(3,0,0), fixed = c(0, NA, NA, NA))
 mAR3cons_c_BIC  <- mAR3cons_c$bic
 
-mAR3cons_d  <- Arima(tsData01[,1], order = c(3,1,0), fixed = c(0, 0, NA))
+mAR3cons_d  <- Arima(tsDataDiff[,1], order = c(3,0,0), fixed = c(0, 0, NA, NA))
 mAR3cons_d_BIC  <- mAR3cons_d$bic
 
-mAR2cons_a  <- Arima(tsData01[,1], order = c(2,1,0), fixed = c(NA, NA))
+mAR2cons_a  <- Arima(tsDataDiff[,1], order = c(2,0,0), fixed = c(NA, NA, NA))
 mAR2cons_a_BIC  <- mAR2cons_a$bic
 
-mAR2cons_b  <- Arima(tsData01[,1], order = c(2,1,0), fixed = c(0,  NA))
+mAR2cons_b  <- Arima(tsDataDiff[,1], order = c(2,0,0), fixed = c(0,  NA, NA))
 mAR2cons_b_BIC  <- mAR2cons_b$bic
 
-mAR1cons_a  <- Arima(tsData01[,1], order = c(1,1,0))
+mAR1cons_a  <- Arima(tsDataDiff[,1], order = c(1,0,0))
 mAR1cons_a_BIC  <- mAR1cons_a$bic
 
 BIC_cons <- data.frame(mAR4cons_a_BIC, mAR4cons_b_BIC, mAR4cons_c_BIC, mAR4cons_d_BIC,
@@ -1044,55 +1010,54 @@ BIC_cons <- data.frame(mAR4cons_a_BIC, mAR4cons_b_BIC, mAR4cons_c_BIC, mAR4cons_
       mAR3cons_a_BIC, mAR3cons_b_BIC, mAR3cons_c_BIC,
       mAR2cons_a_BIC, mAR2cons_b_BIC, mAR1cons_a_BIC)
 #colnames(BIC_cons)[which(BIC_cons == min(BIC_cons))]
-# Selected model for consumption is AR4 model g
+# Selected model for consumption is AR3 model without the first lag
 ```
 
-
-```{r, echo = FALSE, warning = FALSE, message = FALSE}
+```{r, echo = FALSE, warning = FALSE, message = FALSE} 
 # Find the best model for income
-mAR4inc_a      <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, NA, NA, NA))
+mAR4inc_a      <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(NA, NA, NA, NA, NA))
 mAR4inc_a_BIC  <- mAR4inc_a$bic
 
-mAR4inc_b  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, NA,  0, NA))
+mAR4inc_b  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(NA, NA,  0, NA, NA))
 mAR4inc_b_BIC  <- mAR4inc_b$bic
 
-mAR4inc_c  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, 0,   0, NA))
+mAR4inc_c  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(NA, 0,   0, NA, NA))
 mAR4inc_c_BIC  <- mAR4inc_c$bic
 
-mAR4inc_d  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  NA,  0, NA))
+mAR4inc_d  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(0,  NA,  0, NA, NA))
 mAR4inc_d_BIC  <- mAR4inc_d$bic
 
-mAR4inc_e  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(NA, 0,  NA, NA))
+mAR4inc_e  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(NA, 0,  NA, NA, NA))
 mAR4inc_e_BIC  <- mAR4inc_e$bic
 
-mAR4inc_f  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  0,  NA, NA))
+mAR4inc_f  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(0,  0,  NA, NA, NA))
 mAR4inc_f_BIC  <- mAR4inc_f$bic
 
-mAR4inc_g  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  NA, NA, NA))
+mAR4inc_g  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(0,  NA, NA, NA, NA))
 mAR4inc_g_BIC  <- mAR4inc_g$bic
 
-mAR4inc_h  <- Arima(tsData01[,2], order = c(4,1,0), fixed = c(0,  0,  0,  NA))
+mAR4inc_h  <- Arima(tsDataDiff[,2], order = c(4,0,0), fixed = c(0,  0,  0,  NA, NA))
 mAR4inc_h_BIC  <- mAR4inc_h$bic
 
-mAR3inc_a  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(NA, NA, NA))
+mAR3inc_a  <- Arima(tsDataDiff[,2], order = c(3,0,0), fixed = c(NA, NA, NA, NA))
 mAR3inc_a_BIC  <- mAR3inc_a$bic
 
-mAR3inc_b  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(NA, 0, NA))
+mAR3inc_b  <- Arima(tsDataDiff[,2], order = c(3,0,0), fixed = c(NA, 0, NA, NA))
 mAR3inc_b_BIC  <- mAR3inc_b$bic
 
-mAR3inc_c  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(0, NA, NA))
+mAR3inc_c  <- Arima(tsDataDiff[,2], order = c(3,0,0), fixed = c(0, NA, NA, NA))
 mAR3inc_c_BIC  <- mAR3inc_c$bic
 
-mAR3inc_d  <- Arima(tsData01[,2], order = c(3,1,0), fixed = c(0, 0, NA))
+mAR3inc_d  <- Arima(tsDataDiff[,2], order = c(3,0,0), fixed = c(0, 0, NA, NA))
 mAR3inc_d_BIC  <- mAR3inc_d$bic
 
-mAR2inc_a  <- Arima(tsData01[,2], order = c(2,1,0), fixed = c(NA, NA))
+mAR2inc_a  <- Arima(tsDataDiff[,2], order = c(2,0,0), fixed = c(NA, NA, NA))
 mAR2inc_a_BIC  <- mAR2inc_a$bic
 
-mAR2inc_b  <- Arima(tsData01[,2], order = c(2,1,0), fixed = c(0,  NA))
+mAR2inc_b  <- Arima(tsDataDiff[,2], order = c(2,0,0), fixed = c(0,  NA, NA))
 mAR2inc_b_BIC  <- mAR2inc_b$bic
 
-mAR1inc_a  <- Arima(tsData01[,2], order = c(1,1,0))
+mAR1inc_a  <- Arima(tsDataDiff[,2], order = c(1,0,0))
 mAR1inc_a_BIC  <- mAR1inc_a$bic
 
 BIC_inc <- data.frame(mAR4inc_a_BIC, mAR4inc_b_BIC, mAR4inc_c_BIC, mAR4inc_d_BIC,
@@ -1100,11 +1065,11 @@ BIC_inc <- data.frame(mAR4inc_a_BIC, mAR4inc_b_BIC, mAR4inc_c_BIC, mAR4inc_d_BIC
       mAR3inc_a_BIC, mAR3inc_b_BIC, mAR3inc_c_BIC,
       mAR2inc_a_BIC, mAR2inc_b_BIC, mAR1inc_a_BIC)
 #colnames(BIC_inc)[which(BIC_inc == min(BIC_inc))]
-# Selected model for income is an AR1
+# Selected model for income is an AR1 
 ```
 
-```{r, message = FALSE, warning = FALSE, echo = FALSE}
-dfModels <- list(mAR4cons_g, mAR1inc_a)
+```{r, message = FALSE, warning = FALSE, echo = FALSE} 
+dfModels <- list(mAR3cons_c, mAR1inc_a)
 lModels <- list(1,2)
 lTable  <- list(1,2)
 lRes    <- list(1,2)
@@ -1115,9 +1080,9 @@ for (i in 1:length(dfModels)){
   lModels[[i]]           <- cbind(lModels[[i]][, 1], round(lModels[[i]][, 2:5], digits = 2))
   colnames(lModels[[i]]) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
     if (i==2){
-      lModels[[i]][,1]       <- c("Lag 1")
+      lModels[[i]][,1]       <- c("Lag 1", "Mean")
     } else{
-      lModels[[i]][,1]       <- c("Lag 2", "Lag 3", "Lag 4")
+      lModels[[i]][,1]       <- c("Lag 2", "Lag 3", "Mean")
     }
 }
 
@@ -1135,7 +1100,7 @@ i <- 1
   p1 <- gghistogram01(mRes1, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for consumption", ylabel = "")
   p2 <- autoplot.acf01(ggPacf01(mRes1, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for consumption")
   
-  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(97, 0, sigma_Res1))
+  dfRes = data.frame(Residuos = mRes1, Quantis = rnorm(96, 0, sigma_Res1))
   p3 <- ggqqplot(dfRes, x = "Quantis",
    palette = c("#0073C2FF", "#FC4E07"),
    ggtheme = theme_pubclean())
@@ -1153,7 +1118,7 @@ i <- 2
   p4 <- gghistogram01(mRes2, add.normal=TRUE, add.kde=FALSE, xlabel = "Residuals from the AR model for income", ylabel = "")
   p5 <- autoplot.acf01(ggPacf01(mRes2, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the AR model for income")
   
-  dfRes = data.frame(Residuos = mRes2, Quantis = rnorm(97, 0, sigma_Res1))
+  dfRes = data.frame(Residuos = mRes2, Quantis = rnorm(96, 0, sigma_Res1))
   p6 <- ggqqplot(dfRes, x = "Quantis",
    palette = c("#0073C2FF", "#FC4E07"),
    ggtheme = theme_pubclean())
@@ -1164,17 +1129,17 @@ i <- 2
   grid.arrange(p4, grid.arrange(p5, p6, nrow = 1), nrow = 2)
 ```
 
-**Comments:** Different from before differenciating the series, the residuals now fall whithin the confidence bands of the qqplot (assuming a gaussian distribution). Also, we see from the ACF and PACF that we don't have significant lags, except for the 8th lag of the consumption residuals. Given that the confidence bands are not with 100% confidence, it might be only due to a type I error.
+**Comments:** Different from question 2, the residuals of the income series now fall better whithin the confidence bands of the qqplot (assuming a gaussian distribution, except for some points at the right tail of the residuals from income). Also, we see from the ACF and PACF that we don't have significant lags, except for the 8th lag of the income residuals. Given that these diagnostics are not with 100% confidence, it might be only due to a type I error.
 
-**AISHA:** Cheguei a pensar que pode ser culpa ~do PT~ do outlier da crise, mas não sei se faz sentido porque essa PACF em teoria deveria servir para qualquer momento a partir do qual a gente calcula. Então joguei como erro tipo I. 
+As for the ADF test, now we are able to reject the null hipothesis that the series of differenciated income is explosive, using a confidence level of 95% (but not at 99% - however the confidence level should rely also on the problem at hand, and in this case, we considered adequate to use 95% given that the theory supports the idea that consumption and income indeed have a non-spurious relation). This was not the case for the first difference of consumption. We did ran again the models (which includes runing the models manually instead using the function we created to test different lag specifications), but with no changes. We then tried to use the `auto.arima()` function, which fits automatically an ARIMA(p,d,q) model to a series. To our surprise, the consumption series in level has $d=2$ and consequently the first difference has a better adjustment when $d=1$. This suggests that the consumption series is I(2) and not I(1) as we previously tought. However, since the next questions ask us to assume that both are $I(1)$, we considered that this was not going to prevent us to solve the remaining problems.
 
-```{r, echo = FALSE, message = FALSE, warning = FALSE}
+```{r, echo = FALSE, message = FALSE, warning = FALSE} 
   dfADF <- list(1,2)
-  lagmax <- c(1,4)
+  lagmax <- c(3,1)
   
 
   for(i in 1:length(dfModels)){
-      dfADF[[i]]  <- adf.test(tsData01Diff[2:nrow(tsData01Diff),i], k = lagmax[i])
+      dfADF[[i]]  <- adf.test(tsDataDiff[,i], k = lagmax[i], alternative = "stationary")
   }
   
   dfADFfinal <- matrix(NA, ncol = 4, nrow = 2)
@@ -1191,38 +1156,671 @@ i <- 2
     kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-**Comments**: Using a graphical analysis, we see that the residuals are similar to the ones that we found previously when fitting an AR model in terms of the ACF/PACF, but have a better fit to the QQplot staying inside the confidence intervals. As for the ADF test, now we are able to reject the null hipothesis that the series are explosive, using a confidence level of 95%.
-
-**AISHA** Eu tive que mudar pra usar a função original do R (aconteceu no HW3 tb) porque não consegui usar com os modelos que foram estimados. Eu forcei um AR(4) completo pro consumo e um AR(1) pra renda, senão o ADF não saia correto (aparentemente ele tem problema pra estimar quando faltam os lags intermediários, mas não é sempre que isso acontece).
-
 ## Question 4
 
 _Assuming both series are I(1), test for cointegration between consumption and income by re-gressing consumption on income and performing a unit-root test on the residuals. Report the estimated regression coefficients. Plot the regression residuals. Use the Schwartz Information Criterion (SIC) to determine the number of ADF lags in your unit-root residual test. Report the cointegration test statistic. Do you reject cointegration?_
 
-**AISHA** Eu achei estranho o termo ADF lags, imagino que ele esteja falando dos lags do erro Zt.
-
-We will follow the steps described in Lecture 7, slide 22:
+For this question, we will follow the steps described in Lecture 7, slide 22:
 
   1. Run a static regression of Consumption ($Y_t$) on Income ($X_t$)
   $$Cons_t = \delta + \lambda Inc_t + Z_t$$
-  The option for the consumption as the exogenous variable is because the households are constrained by their available income (i.e., income will determine how much you can purchase in goods and services) and not the otherway around - it is not reasonable to expect that our wage will be higher just because we want to buy a new laptop;
+    The option for the income as the exogenous variable is because the households are constrained by their available income (i.e., income will determine how much you can purchase in goods and services) and not the otherway around - it is not reasonable to expect that our wage will be higher just because we want to buy a new laptop;
   2. Obtain the estimates for $\hat{\delta}$ and $\hat{\lambda}$;
   3. Obtain the estimated residuals
-  $$\hat{Z}_t = Cons_t - \hat{\delta} - \hat{\lambda} Inc_t $$;
+  $$\hat{Z}_t = Cons_t - \hat{\delta} - \hat{\lambda} Inc_t;$$
   4. Test if the series of the residuals has a unit root, i.e., test whether $\hat{Z}_t \sim I(0)$ using the appropriate critical values.
+  
+Given that our function to test combinations of lags in a AR(p) model does not work with differenciated series and we would have some time constraints to make the proper adaptations, to perform step 4 we tested AR(p) until $p=10$ (without the intermediate combinations of lags) and computed the BIC of those to determine how many lags should be included in the ADF test.
 
 ```{r, echo = FALSE}
-  
+# Steps 1 to 3 - Regress consumption on Income and get the residuals
+mRegModel  <- lm(tsData01[,1] ~ 1 + tsData01[,2])
+
+mRegModelcoef           <- tidy(coeftest(mRegModel), stringsAsFactors = FALSE) 
+mRegModelcoef           <- cbind(mRegModelcoef[, 1], round(mRegModelcoef[, 2:5], digits = 2))
+colnames(mRegModelcoef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 'P-Value')
+mRegModelcoef[,1] <- c("Intercept", "Income")
+
+mRegModelcoef %>% 
+  kable("latex") %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+
+## Gives the same as ResModel   <- mRegModel$residuals
+ResModel  <- tsData01[,1] - mRegModel$coefficients[1] - mRegModel$coefficients[2] * tsData01[,2]
+
+#autoplot.acf01(ggPacf01(ResModel, plot = FALSE, lag.max = 60, type = "correlation"), title = "Residuals from the model Cons_t = delta + lambda Inc_t + Z_t")
+
+ResLag01  <- lag(ResModel, 1) # This has the coefficient we are interested
+ResDiff01 <- diff(ResModel, 1)
+ResDiff02 <- diff(ResModel, 2)
+ResDiff03 <- diff(ResModel, 3)
+ResDiff04 <- diff(ResModel, 4)
+ResDiff05 <- diff(ResModel, 5)
+ResDiff06 <- diff(ResModel, 6)
+ResDiff07 <- diff(ResModel, 7)
+ResDiff08 <- diff(ResModel, 8)
+ResDiff09 <- diff(ResModel, 9)
+ResDiff10 <- diff(ResModel, 10)
+
+dfResModel <- data.frame(ResModel, ResLag01, ResDiff01, ResDiff02, 
+                         ResDiff03, ResDiff04, ResDiff05, ResDiff06, 
+                         ResDiff07, ResDiff08, ResDiff09, ResDiff10)
+
+# Perfect fit, not goot.
+ResAR10 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 + 
+                ResDiff03 + ResDiff04 + ResDiff05 + ResDiff06 +
+                ResDiff07 + ResDiff08 + ResDiff09 + ResDiff10, 
+              na.action = na.omit)
+ModelResAR10 <-  summary(ResAR10)
+bic10 <- BIC(ResAR10)
+
+ResAR09 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 + 
+                ResDiff03 + ResDiff04 + ResDiff05 + ResDiff06 +
+                ResDiff07 + ResDiff08 + ResDiff09, 
+              na.action = na.omit)
+#summary(ResAR09)
+bic09 <- BIC(ResAR09)
+
+ResAR08 <-  lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 + 
+                ResDiff03 + ResDiff04 + ResDiff05 + ResDiff06 +
+                ResDiff07 + ResDiff08, 
+              na.action = na.omit)
+#summary(ResAR08)
+bic08 <- BIC(ResAR08)
+
+ResAR07 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 +
+                ResDiff03 + ResDiff04 + ResDiff05 + ResDiff06 +
+                ResDiff07, 
+              na.action = na.omit)
+#summary(ResAR07)
+bic07 <- BIC(ResAR07)
+
+
+ResAR06 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 +
+                ResDiff03 + ResDiff04 + ResDiff05 + ResDiff06, 
+              na.action = na.omit)
+#summary(ResAR06)
+bic06 <- BIC(ResAR06)
+
+ResAR05 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 +
+                ResDiff03 + ResDiff04 + ResDiff05, 
+              na.action = na.omit)
+#summary(ResAR05)
+bic05 <- BIC(ResAR05)
+
+
+ResAR04 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 +
+                ResDiff03 + ResDiff04, 
+              na.action = na.omit)
+#summary(ResAR04)
+bic04 <- BIC(ResAR04)
+
+
+ResAR03 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02 +
+                ResDiff03, 
+              na.action = na.omit)
+#summary(ResAR03)
+bic03 <- BIC(ResAR03)
+
+
+ResAR02 <- lm(ResDiff01 ~ -1 + ResLag01 + ResDiff02, 
+              na.action = na.omit)
+#summary(ResAR02)
+bic02 <- BIC(ResAR02)
+
+
+ResAR01 <- lm(ResDiff01 ~ -1 + ResLag01, 
+              na.action = na.omit)
+#summary(ResAR01)
+bic01 <- BIC(ResAR01)
+
+nsample <- sum(!is.na(ResDiff10))
+# See page 12 of mackinnon
+critvalue <- −1.94100 + (−0.2686/nsample) + (−3.365/nsample^2) + (31.223/nsample^3)
+teststats <- ModelResAR10$coefficients[1,1]/ModelResAR10$coefficients[1,2]
 ```
 
+**Comments:** We started with $\Delta \hat{Z}_t = \beta \hat{Z}_{t-1} + \phi_1^* \Delta \hat{Z}_{t-1} + \ldots + \phi_{10}^* \Delta \hat{Z}_{t-10}$ which gives us a BIC of `r round(bic10,4)` and sequentially removed $\phi_i^*$ for $i$ ranging from $10$ to $1$ and we ended up having the lowest BIC with the largest model. We used the updated version of @mackinnon2010 (available at: [http://qed.econ.queensu.ca/working_papers/papers/qed_wp_1227.pdf](http://qed.econ.queensu.ca/working_papers/papers/qed_wp_1227.pdf)) for the critical values (in particular, we used the second line of table 2 for the computation of the critical value). It is worth noticing that we followed the convention from the slides and did not include a constant terms in the regressions, although @mackinnon2010 advises against this. The critical value computed was considering a sample size of `r sum(!is.na(ResDiff10))` and a significance level of 5%. The critical value is equal to `r round(critvalue,4)`, while the test statistics is equal to `r round(teststats,4)`. Since `r round(teststats,4) < round(critvalue,4)`, we reject the null hypothesis that $\hat{Z}_t \sim I(1)$, which is equivalent to reject the hypothesis of no-cointegration between consumption and income.
 
 ## Question 5
 _Estimate an error correction model for consumption using the estimated residuals from the cointegration regression above. Use a general-to-specific modeling approach for the short-run dynamics. Report the estimated model. Report and interpret the short-run and long-run multipliers. Report and interpret the error correction coefficient._
 
+A motivation for using the error correction model for the relationship between consumption and income is that, as we found before, the series for consumption and income are cointegrated. Hence, according to Granger's Representation Theorem, they admit an ECM representation of the form
+$$\begin{aligned}
+  \Delta Y_t = \alpha + \gamma [Y_{t-1} - \delta - \lambda X_{t-1}] + \sum_{j=1}^p \phi_j \Delta Y_{t-j} + \sum_{i=0}^q \beta_i \Delta X_{t-i} + \varepsilon_t,
+\end{aligned}$$
+where we have not only a regression in first differences and white noise error, but also an error correction term that deals with the long term relationship between consumption and income. In our case, $Y_t$ represents aggregate consumption and $X_t$ represents aggregate income.
+
+The model estimation is inline with the Engle and Granger 2-step procedure, where we fist estimate a static cointegration regression of consumption on income, retrieve the residuals and then we estimate an ECM that has the residuals from the first regression as one of the regressors:
+$$\begin{aligned}
+  \Delta CONS_t &= \alpha + \gamma [CONS_{t-1} - \delta - \lambda INC_{t-1}] + \sum_{j=1}^p \phi_j \Delta CONS_{t-j} + \sum_{i=0}^q \beta_i \Delta INC_{t-i} + \varepsilon_t \\
+    &= \alpha + \gamma Res_{t-1} + \sum_{j=1}^p \phi_j \Delta CONS_{t-j} + \sum_{i=0}^p \beta_i \Delta INC_{t-i} + \varepsilon_t 
+\end{aligned}$$
+The first differences gives us the short run dynamics of the relationship between consumption and income. The long-run component is given by the residual (error correction term).
+
+First, we regress consumption on income and retrieve the residuals, in the same way we did in the previous item. Next, we find the appropriate spefication for the error correction model. To do so, we use the general-to-specific approach for the short-run components. We start with an error correction model with four lags for the short run components, and then proceed to sequentially removing insignificant lags, using as threshold a 5% significance level and removing first the lags who present a higher p-value. 
+
+*ECM with 4 lags for both $\Delta INC$ and $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+# Long-run regression
+mLR1 <- lm(tsData01[,1] ~ tsData01[,2])
+Res1 <- mLR1$residuals
+
+# Error Correction Model
+mECM44 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-1) 
+            + lag(diff(tsData01[,1]),-2) + lag(diff(tsData01[,1]),-3) 
+            + lag(diff(tsData01[,1]),-4) + diff(tsData01[,2]) 
+            + lag(diff(tsData01[,2]),-1) + lag(diff(tsData01[,2]),-2) 
+            + lag(diff(tsData01[,2]),-3) + lag(diff(tsData01[,2]),-4))
+
+ECM44coef           <- tidy(coeftest(mECM44), stringsAsFactors = FALSE)
+ECM44coef           <- cbind(ECM44coef[, 1], round(ECM44coef[, 2:5], digits = 2))
+colnames(ECM44coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM44coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)", 
+                        "D_INC(-3)", "D_INC(-4)")
+  
+ECM44coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with 4 lags for $\Delta INC$ and lags 2, 3 and 4 for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM44_1 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-2) 
+               + lag(diff(tsData01[,1]),-3) + lag(diff(tsData01[,1]),-4) 
+               + diff(tsData01[,2]) + lag(diff(tsData01[,2]),-1) 
+               + lag(diff(tsData01[,2]),-2) + lag(diff(tsData01[,2]),-3) 
+               + lag(diff(tsData01[,2]),-4))
+
+ECM44_1coef           <- tidy(coeftest(mECM44_1), stringsAsFactors = FALSE)
+ECM44_1coef           <- cbind(ECM44_1coef[, 1], round(ECM44_1coef[, 2:5], digits = 2))
+colnames(ECM44_1coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM44_1coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)", 
+                        "D_INC(-3)", "D_INC(-4)")
+  
+ECM44_1coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with lags 0, 1, 2 and 4 for $\Delta INC$ and lags 2, 3 and 4 for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM44_2 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-2) 
+               + lag(diff(tsData01[,1]),-3) + lag(diff(tsData01[,1]),-4) 
+               + diff(tsData01[,2]) + lag(diff(tsData01[,2]),-1) 
+               + lag(diff(tsData01[,2]),-2) + lag(diff(tsData01[,2]),-4))
+
+ECM44_2coef           <- tidy(coeftest(mECM44_2), stringsAsFactors = FALSE)
+ECM44_2coef           <- cbind(ECM44_2coef[, 1], round(ECM44_2coef[, 2:5], digits = 2))
+colnames(ECM44_2coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM44_2coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)", 
+                        "D_INC(-4)")
+  
+ECM44_2coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with lags 0, 1, 2 for $\Delta INC$ and lags 2, 3 and 4 for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM42 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-2) 
+               + lag(diff(tsData01[,1]),-3) + lag(diff(tsData01[,1]),-4) 
+               + diff(tsData01[,2]) + lag(diff(tsData01[,2]),-1) 
+               + lag(diff(tsData01[,2]),-2))
+
+ECM42coef           <- tidy(coeftest(mECM42), stringsAsFactors = FALSE)
+ECM42coef           <- cbind(ECM42coef[, 1], round(ECM42coef[, 2:5], digits = 2))
+colnames(ECM42coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM42coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)")
+  
+ECM42coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with lags 0, 1, 2 for $\Delta INC$ and lags 2 and 3 for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-2) 
+             + lag(diff(tsData01[,1]),-3) + diff(tsData01[,2]) 
+             + lag(diff(tsData01[,2]),-1) + lag(diff(tsData01[,2]),-2))
+
+ECM32coef           <- tidy(coeftest(mECM32), stringsAsFactors = FALSE)
+ECM32coef           <- cbind(ECM32coef[, 1], round(ECM32coef[, 2:5], digits = 2))
+colnames(ECM32coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-2)", "D_CONS(-3)",  
+                         "D_INC", "D_INC(-1)", "D_INC(-2)")
+  
+ECM32coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with lags 1 and 2 for $\Delta INC$ and lags 2 and 3 for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32_1 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-2) 
+             + lag(diff(tsData01[,1]),-3) + lag(diff(tsData01[,2]),-1) 
+             + lag(diff(tsData01[,2]),-2))
+
+ECM32_1coef           <- tidy(coeftest(mECM32_1), stringsAsFactors = FALSE)
+ECM32_1coef           <- cbind(ECM32_1coef[, 1], round(ECM32_1coef[, 2:5], digits = 2))
+colnames(ECM32_1coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32_1coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-2)", "D_CONS(-3)", "D_INC(-1)"
+                         , "D_INC(-2)")
+  
+ECM32_1coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with lags 1 and 2 for $\Delta INC$ and third lag for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32_2 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-3) 
+               + lag(diff(tsData01[,2]),-1) + lag(diff(tsData01[,2]),-2))
+
+ECM32_2coef           <- tidy(coeftest(mECM32_2), stringsAsFactors = FALSE)
+ECM32_2coef           <- cbind(ECM32_2coef[, 1], round(ECM32_2coef[, 2:5], digits = 2))
+colnames(ECM32_2coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32_2coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-3)", "D_INC(-1)"
+                         , "D_INC(-2)")
+  
+ECM32_2coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with first lag for $\Delta INC$ and third lag for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM31 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-3) 
+               + lag(diff(tsData01[,2]),-1))
+
+ECM31coef           <- tidy(coeftest(mECM31), stringsAsFactors = FALSE)
+ECM31coef           <- cbind(ECM31coef[, 1], round(ECM31coef[, 2:5], digits = 2))
+colnames(ECM31coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM31coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-3)", "D_INC(-1)")
+  
+ECM31coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with third lag for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM30 <- lm(diff(tsData01[,1]) ~ lag(Res1,-1) + lag(diff(tsData01[,1]),-3))
+
+ECM30coef           <- tidy(coeftest(mECM30), stringsAsFactors = FALSE)
+ECM30coef           <- cbind(ECM30coef[, 1], round(ECM30coef[, 2:5], digits = 2))
+colnames(ECM30coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM30coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-3)")
+  
+ECM30coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+Res2 <- mECM30$residuals
+sigma_Res2 <- summary(mECM30)$sigma
+
+  p1 <- autoplot.acf01(ggPacf01(Res2, plot = FALSE, lag.max = 20, type = "correlation"),
+                       title = "ACF - Residuals from the final ECM model")
+  
+  dfRes = data.frame(Residuos = Res2, Quantis = rnorm(93, 0, sigma_Res2^2))
+  p2 <- ggqqplot(dfRes, x = "Quantis",
+   palette = c("#0073C2FF", "#FC4E07"),
+   ggtheme = theme_pubclean())
+  grid.arrange(p1, p2, nrow = 2)
+```
+
+The final model is 
+$$\begin{aligned}
+  \Delta CONS_t &= 235.03 -0.10 Res_{t-1} + 0.36 \Delta CONS_{t-3} + \varepsilon_t 
+\end{aligned}$$
+The residual analysis show that there is no significant residual autocorrelation at the 5% significance level. Also, the QQ-plot show that, except for the some points at the right part, the residuals fit a normal distribution around zero. Overall, we believe the final model has a good fit to the data and the residuals can be taken as being a result from a white noise process. Now, we proceed with the discussion about the multipliers and coefficients.
+
+Since we do not have the current first difference for aggregate income in the final model (and hence no current income affecting current consumption), the short-run multiplier is zero. That is, current changes in income do not affect changes in current consumption, according to our model. This is supported by the idea that households smooth consumption and try to protect themselves from temporary income fluctuations (unemployment, recessions, end of the year bonuses, etc) - so in the short run, we do not observe an effect of income playing a role in the consumption path. This is a result of households transferring surpluses in income from "good" periods to the "bad" periods, resulting in overall consumption not changing, diminishing uncertainty and providing more predictability. Both @modigliani1963 and @friedman1957 theories supports this smoothing in consumption behavior.
+
+To find the long-run multiplier, we need the equilibrium coefficients $\delta$ and $\lambda$. From the initial regression of consumption on income, we have that $\hat{\delta} = 6783.67$ and $\hat{\lambda} = 0.67$. The long-run multiplier will be given by $\hat{\delta}$. To see this, let us find the long-run multiplier as follows:
+$$\begin{aligned}
+  \Delta \overline{\text{CONS}} &= 235.03 -0.10 [\overline{\text{CONS}} - 6783.37 - 0.67\ \overline{\text{INC}}] + 0.36 \Delta \overline{\text{CONS}} \\
+  0 &= 235.03 -0.10 [\overline{\text{CONS}} - 6783.37 - 0.67\ \overline{\text{INC}}] + 0 \\
+  \overline{\text{CONS}} &= \frac{235.03}{0.10} + 6783.37 + 0.67\ \overline{\text{INC}}
+\end{aligned}$$
+Therefore, the long-run multiplier is $0.67$, same as the value for $\hat{\delta}$. This value gives us the impact over aggregate consumption resulting from a permanente change in aggregate income.
+
+The error correction coefficient is $-0.10$ (p-value = $0.01$), i.e. the coefficient of the residuals in of the regression of conusmption on income. It tells us the adjustment speed of consumption with respect to the long-run equilibrium. If this coefficient is negative and close to zero (as it is our case, using a 5% significance level), consumption shows a partial adjustment towards the long-run equilibrium. Note that, the fact that the error correction coefficient is negative provide us evidence that there indeed are ''corrections'' for deviations from the long run equilibrium: if the residual was positive in the previous period (aggregate consumption yesterday is larger than $\delta + \lambda INC_{t-1}$, then we expect that consumption today falls a little bit in order to adjust itself in view of this ''overconsumption'' in the previous period. How much it falls (adjusts) is given by $\hat{\gamma}= -0.10$.
 
 ## Question 6
-_How strong is the correction to equilibrium? Is there over-shooting? Do you and evidence of Granger causality? Justify your answer._
+_How strong is the correction to equilibrium? Is there over-shooting? Do you find evidence of Granger causality? Justify your answer._
 
+According to the estimate obtained for $\gamma$ above, we have that the correction to equilibrium is not very large. As discusse above, the estimate being negative shows us that there is indeed a correction to equilibrium. However, since the estimative is between 0 and -1, we have a *partial adjustment*, not an overshooting, to deviations from long run equilibrium.
+
+As discussed in the lectures, the over-shooting effect is related to the coefficient of the ECM model that appears in front of the lagged residuals from the level equation. If this coefficient is negative and higher than $1$ in absolute value, then the adjustment is higher than the the initial change (over-shooting of consumption). However, as pointed out in the previous question, this is not the case for the estimated model and we observe small adjusts, or partial adjustments, in consumption over time in response to deviations from the long run equilibrium values.
+
+As for Granger causality in this ECM model, since we do not have a significant (considering a 95% confidence level) coefficient of the type $\Delta \text{INC}_{t-j}$, for $j \geq 1$ in the model, we cannot infer that changes (the $\Delta$'s, i.e., the differenciated terms) of income in the past will Granger cause changes in consumption today.
 
 ## Question 7
 _At the peak of the recession, during the 2nd quarter of 2009, you are asked to forecast the value of consumption for the 3rd quarter of 2009. Do you expect aggregate consumption to raise or fall? Report the predicted change in the value of consumption. How much of this change in consumption is due to the `correction mechanism' alone? Report your point forecast for consumption for the 3rd quarter of 2009._
+
+Here, we need to estimate a model and perform a forecast, but only considering the data until 2Q2009. We start by repiting the procedure in question 5 in order to find the appropriate ECM model. 
+
+First, we created a new data set with data only until 2Q2009. 
+
+```{r}
+dfData03 <- subset(dfData01, TIME <= "2009-04-01")
+tsData03 <- xts(dfData03[,3:4], order.by = as.yearqtr(dfData03[,1]), frequency = 4)
+```
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+dfData04 <- melt(dfData03, id.vars = c("obs", "TIME"))
+
+plotSeries <- ggplot(dfData04, 
+             aes(x = TIME, y = value, color = variable)) +
+        geom_line(alpha = 1)+
+        labs(title="Quarterly aggregate consumption and income (in Euros)", 
+                  subtitle = "1988Q1 to 2009Q2",  y = "", 
+                  x= "Date", color = "Variable") +
+        scale_colour_brewer(palette = "Set1") +
+        scale_x_date(limits = as.Date(c("1988-01-01","2009-04-01")), 
+                     date_breaks = "12 months", name = "Date", 
+                     labels = date_format("%m-%Y")) +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), )
+
+print(plotSeries)
+```
+
+Next, we make the regression of consumption on income and retrieve the residuals so we can use them in the ECM model estimation. 
+Finally, we procedd with applying the general do specific approach to select the lags for the short-tem components. We again start with 4 lags for $\Delta INC$ and $\Delta CONS$, and sequentially eliminate statistically insignificant lags (5% significance level). Bellow, we present only the estimates for the final model. The intermediate models estimated can be found in the Appendix.
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+# Long-run regression
+mLR <- lm(tsData03[,1] ~ tsData03[,2])
+Res3 <- mLR$residuals
+```
+
+*ECM with 2 lags for $\Delta INC$ and third lag for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32_3 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1)  + lag(diff(tsData03[,1]),-3) 
+             + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2))
+
+ECM32_3coef           <- tidy(coeftest(mECM32_3), stringsAsFactors = FALSE)
+ECM32_3coef           <- cbind(ECM32_3coef[, 1], round(ECM32_3coef[, 2:5], digits = 2))
+colnames(ECM32_3coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32_3coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-3)", "D_INC(-1)", "D_INC(-2)")
+  
+ECM32_3coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+Res4 <- mECM32_3$residuals
+sigma_Res4 <- summary(mECM32_3)$sigma
+
+  p1 <- autoplot.acf01(ggPacf01(Res4, plot = FALSE, lag.max = 20, type = "correlation"),
+                       title = "ACF - Residuals from the final ECM model")
+  
+  #dfRes = data.frame(Residuos = Res4, Quantis = rnorm(82, 0, sigma_Res4^2))
+  #p2 <- ggqqplot(dfRes, x = "Quantis",
+   #palette = c("#0073C2FF", "#FC4E07"),
+   #ggtheme = theme_pubclean())
+  #grid.arrange(p1, p2, nrow = 2)
+  
+  print(p1)
+```
+
+The final model is
+
+$$\begin{aligned}
+  \Delta CONS_t &= 223.21 - 0.04Res_{t-1} + 0.40 \Delta CONS_{t-3} + 0.16 \Delta INC_{t-1} - 0.14 \Delta INC_{t-2} + \epsilon_t \\
+  \Delta CONS_t &= 223.21 - 0.04[CONS_{t-1} - \hat{\delta} - \hat{\lambda} INC_{t-1}] + 0.40 \Delta CONS_{t-3} + 0.16 \Delta INC_{t-1} - 0.14 \Delta INC_{t-2} + \epsilon_t \\
+    \Delta CONS_t &= 223.21 - 0.04[CONS_{t-1} - 7486.44 - 0.66 INC_{t-1}] + 0.40 \Delta CONS_{t-3} + 0.16 \Delta INC_{t-1} \\
+      &- 0.14 \Delta INC_{t-2} + \epsilon_t
+\end{aligned}$$
+
+The residual analysis of the results show no significant residual autocorrelation (5% significance level), which offers evidence towards whine noise innovations in the model.
+
+* *Do you expect aggregate consumption to raise or fall?*
+
+From the error correction coefficient estimate, we expect, in the next quarter, a small decrease on consumption due to adjustments to equilibrium. Note however, that such decrese might be very small and not relevant, since the error correction coefficient is insignifican even for large level of significance since the p-value is above 30%. We believe that any changes in consumption would be more related to past changes in consumption than to adjustments to an equilibrium.
+
+* *Report the predicted change in the value of consumption.*
+
+Now, we proceed with finding a one-step ahead forecas for change in consumption. Since the final model only consider past values of variables, the predicted change in consumption for the third quarter of 2009 can be computed without the need to assign some dynamics for aggregate income. The predicted change in consumption, given all the information until period T ($D_T$), will be:
+$$\begin{aligned}
+  \Delta \hat{CONS}_{T+1} &= E[\Delta CONS_{T+1}|D_T] \\
+    &= E [ \alpha + \gamma[CONS_{T} - \delta - \lambda INC_{T}] + \phi_3 \Delta CONS_{T-2} + \beta_1 \Delta_{T} \\
+    &+ \beta_2 \Delta_{T-1} + \epsilon_{T+1}|D_T ] \\
+    &= \alpha + \gamma Res_{T} + \phi_3 \Delta CONS_{T-2} + \beta_1 \Delta_{T} + \beta_2 \Delta_{T-1}
+\end{aligned}$$
+
+The observed values of the above variables are summarized bellow. Note that $T+1$ represents 3Q2009. Thus, $T$ is 2Q2009, $T-1$ is 1Q2009 and $T-2$ is 4Q2008.
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+tInfo <- matrix(nrow = 5, ncol=1)
+rownames(tInfo) <- c("Res 2Q2009", "D_CONS 4Q2008", "D_INC 2Q2009", "D_INC 1Q2009", "CONS 2Q2009")
+colnames(tInfo) <- c("Observed value")
+
+nT <- length(tsData03[,1])
+
+nX1 <- as.numeric(Res3[nT])
+nX2 <- as.numeric(tsData03[nT-2,1]) - as.numeric(tsData03[nT-3,1])
+nX3 <- as.numeric(tsData03[nT,2]) - as.numeric(tsData03[nT-1,2])
+nX4 <- as.numeric(tsData03[nT-1,2]) - as.numeric(tsData03[nT-2,2])
+nX5 <- as.numeric(tsData03[nT,1])
+
+vX <- c(nX1, nX2, nX3, nX4, nX5)
+
+for( i in 1:5){
+  tInfo[i] = vX[i]
+}
+
+tInfo %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The resulting predicted consumption will then be:
+$$\begin{aligned}
+  \Delta \hat{CONS}_{T+1} &= 223.21 -0.04 \cdot 2627.944 + 0.40 \cdot 204.2 + 0.16 \cdot (-1600.0) - 0.14 \cdot (-2706.4) \\
+   &= 322.67.
+\end{aligned}$$
+
+* *How much of this change in consumption is due to the ‘correction mechanism’ alone?*
+
+The amount of the above result that is due to the correction mechanism is:
+$$\begin{aligned}
+  -0.04 \cdot 2627.944 = -105.12,
+\end{aligned}$$
+which can be seen as a small change relative to the level of aggregate consumption. The relative small correction is due to the fact that the error coefficient is statistically insignificant at 5% or 10% (or even higher) significance levels. Thus, from our final model, we do not expected correction mechanisms to affect changes over consumption in a relevant manner. 
+
+* *Report your point forecast for consumption for the 3rd quarter of 2009.*
+
+Since we have the value of consumption in 2Q2009 and the predicted change in 3Q2009, we can retrieve the consumption in 3Q2009. Hence, our forecast for $CONS_{T+1}$ wll be:
+$$\begin{aligned}
+  CONS_T + \Delta CONS_{T+1} = CONS_{T+1} \quad \Rightarrow \quad 86748.8 + 322.67 = 87071.47.
+\end{aligned}$$
+
+Overall, with data up until the recession peak, our model predicts a (relatively) small increase over consumption. This result seems to be in line with the somawhat flat behaviour observer after the crisis. As a matter of fact, our forecast for consumption at 3Q2009 seems to be close to the observed consumption ($87121.6$), at least in level terms. A more complete analysis to understend how close our estimate is would require confidence intervals.
+
+## Appendix to question 7 - intermediate models
+
+*ECM with four lags for $\Delta INC$ and $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM44 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1) + lag(diff(tsData03[,1]),-1) 
+            + lag(diff(tsData03[,1]),-2) + lag(diff(tsData03[,1]),-3) 
+            + lag(diff(tsData03[,1]),-4) + diff(tsData03[,2]) 
+            + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2) 
+            + lag(diff(tsData03[,2]),-3) + lag(diff(tsData03[,2]),-4))
+
+ECM44coef           <- tidy(coeftest(mECM44), stringsAsFactors = FALSE)
+ECM44coef           <- cbind(ECM44coef[, 1], round(ECM44coef[, 2:5], digits = 2))
+colnames(ECM44coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM44coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)", 
+                        "D_INC(-3)", "D_INC(-4)")
+  
+ECM44coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with lags 0, 1, 2, and 4 for $\Delta INC$ and 4 lags for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM44_1 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1) + lag(diff(tsData03[,1]),-1) 
+            + lag(diff(tsData03[,1]),-2) + lag(diff(tsData03[,1]),-3) 
+            + lag(diff(tsData03[,1]),-4) + diff(tsData03[,2]) 
+            + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2) 
+            + lag(diff(tsData03[,2]),-4))
+
+ECM44_1coef           <- tidy(coeftest(mECM44_1), stringsAsFactors = FALSE)
+ECM44_1coef           <- cbind(ECM44_1coef[, 1], round(ECM44_1coef[, 2:5], digits = 2))
+colnames(ECM44_1coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM44_1coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)", 
+                        "D_INC(-4)")
+  
+ECM44_1coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with 2 lags for $\Delta INC$ and 4 lags for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM42 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1) + lag(diff(tsData03[,1]),-1) 
+            + lag(diff(tsData03[,1]),-2) + lag(diff(tsData03[,1]),-3) 
+            + lag(diff(tsData03[,1]),-4) + diff(tsData03[,2]) 
+            + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2))
+
+ECM42coef           <- tidy(coeftest(mECM42), stringsAsFactors = FALSE)
+ECM42coef           <- cbind(ECM42coef[, 1], round(ECM42coef[, 2:5], digits = 3))
+colnames(ECM42coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM42coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_CONS(-4)", "D_INC", "D_INC(-1)", "D_INC(-2)")
+  
+ECM42coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with 2 lags for $\Delta INC$ and 3 lags for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1) + lag(diff(tsData03[,1]),-1) 
+            + lag(diff(tsData03[,1]),-2) + lag(diff(tsData03[,1]),-3) + diff(tsData03[,2]) 
+            + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2))
+
+ECM32coef           <- tidy(coeftest(mECM32), stringsAsFactors = FALSE)
+ECM32coef           <- cbind(ECM32coef[, 1], round(ECM32coef[, 2:5], digits = 2))
+colnames(ECM32coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_INC", "D_INC(-1)", "D_INC(-2)")
+  
+ECM32coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with 2 lags for $\Delta INC$ and lags 2 and 3 for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32_1 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1) + lag(diff(tsData03[,1]),-2) 
+             + lag(diff(tsData03[,1]),-3) + diff(tsData03[,2]) 
+             + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2))
+
+ECM32_1coef           <- tidy(coeftest(mECM32_1), stringsAsFactors = FALSE)
+ECM32_1coef           <- cbind(ECM32_1coef[, 1], round(ECM32_1coef[, 2:5], digits = 2))
+colnames(ECM32_1coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32_1coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-2)", 
+                        "D_CONS(-3)", "D_INC", "D_INC(-1)", "D_INC(-2)")
+  
+ECM32_1coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+*ECM with 2 lags for $\Delta INC$ and third lag for $\Delta CONS$*
+
+```{r, message= FALSE, warning= FALSE, echo = FALSE}
+
+mECM32_2 <- lm(diff(tsData03[,1]) ~ lag(Res3,-1)  + lag(diff(tsData03[,1]),-3) + diff(tsData03[,2]) 
+             + lag(diff(tsData03[,2]),-1) + lag(diff(tsData03[,2]),-2))
+
+ECM32_2coef           <- tidy(coeftest(mECM32_2), stringsAsFactors = FALSE)
+ECM32_2coef           <- cbind(ECM32_2coef[, 1], round(ECM32_2coef[, 2:5], digits = 2))
+colnames(ECM32_2coef) <- c('Variable', 'Estimate', 'Std. Error', 't-statistic', 
+                           'P-Value')
+ECM32_2coef[,1]       <- c("Intercept", "Res(-1)", "D_CONS(-3)", "D_INC", "D_INC(-1)", "D_INC(-2)")
+  
+ECM32_2coef %>% 
+  kable("latex") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+# References 
