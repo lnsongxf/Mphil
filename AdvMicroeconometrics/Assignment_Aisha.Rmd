@@ -13,7 +13,7 @@ bibliography: references.bib
 # Verify if a package is already installed, if not, download and install before loading. 
 chooseCRANmirror(graphics = FALSE, ind = 10)
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries)
+pacman::p_load(ggplot2, MASS, knitr)
 ```
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
@@ -34,8 +34,8 @@ where:
 * $Y$ and $X$ are $n \times 1$ vectors which contain the endogenous variables;
 * $Z$ is a $n \times k$ matrix of instruments;
 * $\varepsilon$ and $V$ are $n \times 1$ vectors that contain disturbances.
+* The different rows of $\left(\varepsilon\ \vdots\ V\right)$, are independently normally distributed, i.e., 
 
-The different rows of $\left(\varepsilon\ \vdots\ V\right)$, are independently normally distributed, i.e., 
 \begin{align*}
   \begin{pmatrix}
     \varepsilon_i \\
@@ -47,5 +47,41 @@ The different rows of $\left(\varepsilon\ \vdots\ V\right)$, are independently n
   \rho & & 1
   \end{pmatrix}
 \end{align*}
+* $n=100$, $k=10$, $\Pi = a \times e_{10}$ with $e_{10} \in \mathbb{R}^{10}$ whose first element is $1$ and the remaining are equal to zero.
+* All elements from $Z$ are independently distributed and follows a standard normal distribution.
+* $a \in \{0.3,.0.25, 0.2, 0.15, 0.1, 0.05, 0 \}$
+* $\rho \in \{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95 \}$
+
+```{r, echo = FALSE, warning = FALSE}
+  # Preparing data
+  set.seed(6969)
+
+  # Magic numbers
+
+  dn   <- 100
+  dk   <- 10
+  va   <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
+  vrho <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
+
+  
+  ## INITIALIZATION ##
+  # Generate the Z matrix
+  mZ   = matrix(rep(0, dn*dk), nrow = dn, ncol = dk)
+  
+  for (j in 1:ncol(mZ)){
+    mZ[,j] <- rnorm(nrow(mZ), mean = 0, sd = 1)
+  }
+
+  # Building a matrix with all Pi
+  ve10 <- matrix(c(1, rep(0, dk-1)), nrow=10, ncol = 1)
+  mPi  <- t(va %*% t(ve10))
+  
+  
+  # colocar um laço for aqui
+  Sigma <- matrix(c(1,vrho[1],vrho[1],1),2,2)
+  pair <- mvrnorm(n = 1, rep(0, 2), Sigma)
+  
+
+```
 
 
