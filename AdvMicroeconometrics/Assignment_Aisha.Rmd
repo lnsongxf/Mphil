@@ -1,0 +1,51 @@
+---
+title: "Adv. Microeconometrics Computer Assignment"
+author: "A. Schmidt"
+date: "11/19/2020"
+output:
+  pdf_document: default
+bibliography: references.bib
+---
+
+
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Verify if a package is already installed, if not, download and install before loading. 
+chooseCRANmirror(graphics = FALSE, ind = 10)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(ggplot2, kableExtra, stargazer, xts, knitr, tibble, broom, forecast, lmtest, sweep, reshape, gridExtra, ggpubr, tseries)
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+# Prevents code from getting out of the page
+## Works with almost everything except urls and strings.
+opts_chunk$set(tidy.opts=list(width.cutoff=50),tidy=TRUE)
+```
+
+# 1 - Size distortions
+
+Simulate data from the following model:
+
+\begin{align*}
+  Y &= X \beta + \varepsilon \\
+  X &= Z\Pi + V
+\end{align*}
+where:
+* $Y$ and $X$ are $n \times 1$ vectors which contain the endogenous variables;
+* $Z$ is a $n \times k$ matrix of instruments;
+* $\varepsilon$ and $V$ are $n \times 1$ vectors that contain disturbances.
+
+The different rows of $\left(\varepsilon\ \vdots\ V\right)$, are independently normally distributed, i.e., 
+\begin{align*}
+  \begin{pmatrix}
+    \varepsilon_i \\
+    V_i
+  \end{pmatrix} \sim \mathcal{N}(0, \Sigma), \qquad 
+  \Sigma =
+  \begin{pmatrix}
+  1 & \vdots & \rho \\
+  \rho & & 1
+  \end{pmatrix}
+\end{align*}
+
+
