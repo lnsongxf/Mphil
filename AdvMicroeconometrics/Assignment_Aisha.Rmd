@@ -13,7 +13,7 @@ bibliography: references.bib
 # Verify if a package is already installed, if not, download and install before loading. 
 chooseCRANmirror(graphics = FALSE, ind = 10)
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, MASS, knitr)
+pacman::p_load(ggplot2, MASS, knitr, ivreg)
 ```
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
@@ -135,7 +135,7 @@ fsimul <- function(dn, va, vrho, dBeta, mPi){
 
 _For each value of $\alpha$ make a figure of the rejection frequency as a function of $\rho$ when testing $H_0: \beta = 0$ with $95\%$ significance using the $2SLS$ $t$-statistic (so five figures which show the rejection frequency as a function of $\alpha$).
 
-```{r, echo = FALSE, warning = FALSE}
+```{r, echo = FALSE, warning = FALSE, eval = FALSE}
   # First, estimate using 2SLS
   
   ## First stage
@@ -155,15 +155,47 @@ _For each value of $\alpha$ make a figure of the rejection frequency as a functi
 
   for (j in 1:length(vrho)){
     for (i in 1:length(va)){
-      first_stage     <- lm(lX[[i]][,i] ~ mZ - 1)
+      first_stage     <- lm(lX[[j]][,i] ~ mZ - 1)
       vPihat[[j]][,i] <- first_stage$coefficients
       lXhat[[j]][,i]  <- first_stage$fitted.values
     }
   }
   
-  # Second stage
+  mBetahat <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+  lYhat = list(1,2,3,4,5,6,7,8,9,10)
   
+  for (i in 1:length(lY)){
+    lYhat[[i]] <- 0 * lY[[i]]
+  }
+  
+  
+  # Second stage
+  for (j in 1:length(vrho)){
+    for (i in 1:length(va)){
+      second_stage      <- lm(lY[[j]][,i] ~ lXhat[[j]][,i] - 1)
+      mBetahat[i,j]     <- second_stage$coefficients
+    }
+  }
 
 ```
 
+Using a package
 
+```{r, echo = FALSE, warning = FALSE, eval = TRUE}
+
+  mBetahat    <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+  mpvaluebeta <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+  mrejectbeta <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+  
+  
+  for (j in 1:length(vrho)){
+    for (i in 1:length(va)){
+      model_2sls       <- ivreg(lY[[j]][,i] ~ lX[[j]][,i] - 1 | mZ[,1] + mZ[,2] + mZ[,3] + mZ[,4] + mZ[,5] + mZ[,6] + mZ[,7] + mZ[,8] + mZ[,9] + mZ[,10])
+      mBetahat[i,j]    <- model_2sls$coefficients
+      summarybeta      <- summary(model_2sls)
+      mpvaluebeta[i,j] <- summarybeta$coefficients[4]
+      mrejectbeta[i,j] <- ifelse(mpvaluebeta[i,j] < 0.05, 1, 0)
+    }
+  }
+
+```
