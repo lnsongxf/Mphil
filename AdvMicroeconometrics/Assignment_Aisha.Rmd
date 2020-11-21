@@ -53,15 +53,19 @@ where:
 * $\rho \in \{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95 \}$
 
 ```{r, echo = FALSE, warning = FALSE}
+  # This block is a static block that is kept through all 5000 simulations
+
+
   # Preparing data
   set.seed(6969)
 
   # Magic numbers
 
-  dn   <- 100
-  dk   <- 10
-  va   <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
-  vrho <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
+  dn    <- 100
+  dk    <- 10
+  va    <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
+  vrho  <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
+  dbeta <- 1
 
   
   ## INITIALIZATION ##
@@ -75,11 +79,89 @@ where:
   # Building a matrix with all Pi
   ve10 <- matrix(c(1, rep(0, dk-1)), nrow=10, ncol = 1)
   mPi  <- t(va %*% t(ve10))
+
+```
+
+
+```{r, echo = FALSE, warning = FALSE}
+# This block simulates the model
+
+fsimul <- function(dn, va, vrho, dBeta, mPi){
+  mEV <- array(rep(0, dn*2*length(vrho)), dim = c(dn, 2, length(vrho)))
+  
+  # Builds the errors sampling from the multivariate normal distribution
+  for (i in 1:length(vrho)){
+    Sigma   <- matrix(c(1,vrho[i],vrho[i],1),2,2)
+    for (j in 1:dn){
+      pair    <- mvrnorm(n = 1, rep(0, 2), Sigma)
+      mEV[j,,i] <- pair
+    }
+  }
+  
+  # Builds X
+  lX = list(1,2,3,4,5,6,7,8,9,10)
+  
+  for(i in 1:length(lX)){
+    lX[[i]] <- matrix(rep(0, dn*length(va)), nrow = dn, ncol = length(va))
+  }
   
   
-  # colocar um laço for aqui
-  Sigma <- matrix(c(1,vrho[1],vrho[1],1),2,2)
-  pair <- mvrnorm(n = 1, rep(0, 2), Sigma)
+  for (j in 1:length(vrho)){
+    for (i in 1:length(va)){
+      lX[[j]][,i] = mZ %*% mPi[,i] + mEV[,2,j]
+    }
+  }
+  
+  # Builds Y
+  lY = list(1,2,3,4,5,6,7,8,9,10)
+  
+  for(i in 1:length(lX)){
+    lY[[i]] <- matrix(rep(0, dn*length(va)), nrow = dn, ncol = length(va))
+  }
+  
+  for (j in 1:length(vrho)){
+    for (i in 1:length(va)){
+      lY[[j]][,i] = lX[[j]][,i] * dbeta + mEV[,1,j]
+    }
+  }
+  
+  return(lY, lX, mEV)
+}
+  
+```
+
+
+## Item 1
+
+_For each value of $\alpha$ make a figure of the rejection frequency as a function of $\rho$ when testing $H_0: \beta = 0$ with $95\%$ significance using the $2SLS$ $t$-statistic (so five figures which show the rejection frequency as a function of $\alpha$).
+
+```{r, echo = FALSE, warning = FALSE}
+  # First, estimate using 2SLS
+  
+  ## First stage
+  vPihat = list(1,2,3,4,5,6,7,8,9,10)
+  
+  for(i in 1:length(lX)){
+    vPihat[[i]] <- 0*mPi
+  }
+
+  
+  lXhat = list(1,2,3,4,5,6,7,8,9,10)
+  
+  for (i in 1:length(lX)){
+    lXhat[[i]] <- 0 * lX[[i]]
+  }
+  
+
+  for (j in 1:length(vrho)){
+    for (i in 1:length(va)){
+      first_stage     <- lm(lX[[i]][,i] ~ mZ - 1)
+      vPihat[[j]][,i] <- first_stage$coefficients
+      lXhat[[j]][,i]  <- first_stage$fitted.values
+    }
+  }
+  
+  # Second stage
   
 
 ```
