@@ -13,7 +13,7 @@ bibliography: references.bib
 # Verify if a package is already installed, if not, download and install before loading. 
 chooseCRANmirror(graphics = FALSE, ind = 10)
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, MASS, knitr, ivreg)
+pacman::p_load(ggplot2, MASS, knitr, ivreg, gridExtra, RColorBrewer, latex2exp)
 ```
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
@@ -66,6 +66,7 @@ where:
   va    <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
   vrho  <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
   dbeta <- 1
+  dsim  <- 100
 
   
   ## INITIALIZATION ##
@@ -125,7 +126,7 @@ fsimul <- function(dn, va, vrho, dBeta, mPi){
     }
   }
   
-  return(lY, lX, mEV)
+  return(list(lY, lX, mEV))
 }
   
 ```
@@ -182,20 +183,130 @@ _For each value of $\alpha$ make a figure of the rejection frequency as a functi
 Using a package
 
 ```{r, echo = FALSE, warning = FALSE, eval = TRUE}
+  simul_results <- vector(mode = "list", length = dsim)
+  
+  for (k in 1:dsim){
+    # Gets the model
+    my_model <- list(1,2,3)
+    my_model <- fsimul(dn, va, vrho, dBeta, mPi)
+    lY       <- my_model[[1]]
+    lX       <- my_model[[2]]
+    mEV      <- my_model[[3]]
 
-  mBetahat    <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
-  mpvaluebeta <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
-  mrejectbeta <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
-  
-  
-  for (j in 1:length(vrho)){
-    for (i in 1:length(va)){
-      model_2sls       <- ivreg(lY[[j]][,i] ~ lX[[j]][,i] - 1 | mZ[,1] + mZ[,2] + mZ[,3] + mZ[,4] + mZ[,5] + mZ[,6] + mZ[,7] + mZ[,8] + mZ[,9] + mZ[,10])
-      mBetahat[i,j]    <- model_2sls$coefficients
-      summarybeta      <- summary(model_2sls)
-      mpvaluebeta[i,j] <- summarybeta$coefficients[4]
-      mrejectbeta[i,j] <- ifelse(mpvaluebeta[i,j] < 0.05, 1, 0)
+    mBetahat    <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+    mpvaluebeta <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+    mrejectbeta <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+    
+    for (j in 1:length(vrho)){
+      for (i in 1:length(va)){
+        model_2sls         <- ivreg(lY[[j]][,i] ~ lX[[j]][,i] - 1 | mZ[,1] + mZ[,2] + mZ[,3] + mZ[,4] + mZ[,5] + mZ[,6] + mZ[,7] + mZ[,8] + mZ[,9] + mZ[,10])
+        mBetahat[i,j]      <- model_2sls$coefficients
+        summarybeta        <- summary(model_2sls)
+        mpvaluebeta[i,j]   <- summarybeta$coefficients[4]
+        mrejectbeta[i,j]   <- ifelse(mpvaluebeta[i,j] < 0.05, 1, 0)
+      }
     }
+    simul_results[[k]] <- mrejectbeta
+  }
+
+  results_final <- 0*simul_results[[1]]
+
+  for (i in 1:dsim){
+    results_final <- results_final + simul_results[[i]]
   }
 
 ```
+
+Graph for Q1
+
+```{r, echo = FALSE, warning = FALSE, eval = TRUE}
+
+   df1 <- data.frame(Rho = 0, Alpha = 0, Freq = 0)
+
+
+   for (i in 1:length(va)){
+     df  <- data.frame(Rho = vrho, Alpha = va[i], Freq = results_final[i,])
+     df1 <- rbind(df1, df)
+   }
+   df1 <- df1[-1,]
+   
+   cores <- brewer.pal(7, "Dark2")
+   df1$Freq <- df1$Freq/dsim
+
+   
+   p1 <- ggplot(df1[df1$Alpha == 0.30,], aes(x = factor(Rho), y = round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[1], fill = cores[1], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.30$'))+
+      theme_bw()
+      
+   
+   p2 <- ggplot(df1[df1$Alpha == 0.25,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[2], fill = cores[2], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.25$'))+
+      theme_bw()
+   
+   p3 <- ggplot(df1[df1$Alpha == 0.20,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[3], fill = cores[3], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.20$'))+
+      theme_bw()
+   
+   p4 <- ggplot(df1[df1$Alpha == 0.15,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[4], fill = cores[4], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.15$'))+
+      theme_bw()
+   
+   p5 <- ggplot(df1[df1$Alpha == 0.10,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[5], fill = cores[5], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.10$'))+
+      theme_bw()
+   
+   p6 <- ggplot(df1[df1$Alpha == 0.05,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[6], fill = cores[6], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.05$'))+
+      theme_bw()
+   
+   p7 <- ggplot(df1[df1$Alpha == 0.00,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+      geom_bar(stat = 'identity', alpha = .4, colour = cores[7], fill = cores[7], width=0.6)+
+      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
+      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$\\alpha = 0.00$'))+
+      theme_bw()
+   
+
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig01-Q1.pdf", width = 6, height = 3)
+  grid.arrange(p1, p2, p3, ncol=3, nrow=1)
+dev.off()  
+
+
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig02-Q1.pdf", width = 6, height = 3)
+  grid.arrange(p4, p5, ncol=2, nrow=1)
+dev.off()
+
+
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig03-Q1.pdf", width = 6, height = 3)
+  grid.arrange(p6, p7, ncol=2, nrow=1)
+dev.off()
+```
+
+## Question 2
+
+
