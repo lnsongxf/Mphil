@@ -13,7 +13,7 @@ bibliography: references.bib
 # Verify if a package is already installed, if not, download and install before loading. 
 chooseCRANmirror(graphics = FALSE, ind = 10)
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(ggplot2, MASS, knitr, ivreg, gridExtra, RColorBrewer, latex2exp)
+pacman::p_load(ggplot2, MASS, knitr, ivreg, gridExtra, RColorBrewer, latex2exp, ggExtra, grid)
 ```
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
@@ -65,17 +65,20 @@ where:
   dk    <- 10
   va    <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
   vrho  <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
-  dbeta <- 1
+  dbeta <- 0
   dsim  <- 100
+  rgrid <- seq(0,200,1)
 
   
   ## INITIALIZATION ##
-  # Generate the Z matrix
+  # Generate the Z matrix and associates
   mZ   = matrix(rep(0, dn*dk), nrow = dn, ncol = dk)
   
   for (j in 1:ncol(mZ)){
     mZ[,j] <- rnorm(nrow(mZ), mean = 0, sd = 1)
   }
+  Pz <- mZ %*% solve(t(mZ) %*% mZ) %*% t(mZ)
+  MZ <- diag(nrow=nrow(Pz))-Pz
 
   # Building a matrix with all Pi
   ve10 <- matrix(c(1, rep(0, dk-1)), nrow=10, ncol = 1)
@@ -136,7 +139,7 @@ fsimul <- function(dn, va, vrho, dBeta, mPi){
 
 _For each value of $\alpha$ make a figure of the rejection frequency as a function of $\rho$ when testing $H_0: \beta = 0$ with $95\%$ significance using the $2SLS$ $t$-statistic (so five figures which show the rejection frequency as a function of $\alpha$).
 
-```{r, echo = FALSE, warning = FALSE, eval = FALSE}
+```{r, echo = FALSE, warning = FALSE, eval = FALSE} 
   # First, estimate using 2SLS
   
   ## First stage
@@ -231,82 +234,191 @@ Graph for Q1
    df1 <- df1[-1,]
    
    cores <- brewer.pal(7, "Dark2")
-   df1$Freq <- df1$Freq/dsim
+   df1$Freq <- round(df1$Freq/dsim*100,0)
 
    
-   p1 <- ggplot(df1[df1$Alpha == 0.30,], aes(x = factor(Rho), y = round((Freq/dsim)*100,0))) + 
+   p1 <- ggplot(df1[df1$Alpha == 0.30,], aes(x = factor(Rho), y = Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[1], fill = cores[1], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
-      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.30$'))+
-      theme_bw()
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 7), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$a = 0.30$'))+
+      theme_bw()+
+      removeGridX()
       
    
-   p2 <- ggplot(df1[df1$Alpha == 0.25,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+   p2 <- ggplot(df1[df1$Alpha == 0.25,], aes(x = factor(Rho), Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[2], fill = cores[2], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
-      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.25$'))+
-      theme_bw()
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 7), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$a = 0.25$'))+
+      theme_bw()+
+      removeGridX()
    
-   p3 <- ggplot(df1[df1$Alpha == 0.20,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+   p3 <- ggplot(df1[df1$Alpha == 0.20,], aes(x = factor(Rho), Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[3], fill = cores[3], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
-      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.20$'))+
-      theme_bw()
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 7), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      labs(title = TeX('$a = 0.20$'))+
+      theme_bw()+
+      removeGridX()
    
-   p4 <- ggplot(df1[df1$Alpha == 0.15,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+   p4 <- ggplot(df1[df1$Alpha == 0.15,], aes(x = factor(Rho), Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[4], fill = cores[4], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
       theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.15$'))+
-      theme_bw()
+      labs(title = TeX('$a = 0.15$'))+
+      theme_bw()+
+      removeGridX()
    
-   p5 <- ggplot(df1[df1$Alpha == 0.10,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+   p5 <- ggplot(df1[df1$Alpha == 0.10,], aes(x = factor(Rho), Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[5], fill = cores[5], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
       theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.10$'))+
-      theme_bw()
+      labs(title = TeX('$a = 0.10$'))+
+      theme_bw()+
+      removeGridX()
    
-   p6 <- ggplot(df1[df1$Alpha == 0.05,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+   p6 <- ggplot(df1[df1$Alpha == 0.05,], aes(x = factor(Rho), Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[6], fill = cores[6], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
       theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.05$'))+
-      theme_bw()
+      labs(title = TeX('$a = 0.05$'))+
+      theme_bw()+
+      removeGridX()
    
-   p7 <- ggplot(df1[df1$Alpha == 0.00,], aes(x = factor(Rho), round((Freq/dsim)*100,0))) + 
+   p7 <- ggplot(df1[df1$Alpha == 0.00,], aes(x = factor(Rho), Freq)) + 
       geom_bar(stat = 'identity', alpha = .4, colour = cores[7], fill = cores[7], width=0.6)+
-      scale_x_discrete(TeX('$\\rho$'), breaks = NULL)+
-      scale_y_continuous(TeX('# of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10))+
+      scale_x_discrete(TeX('$\\rho$'))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
       theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
-      labs(title = TeX('$\\alpha = 0.00$'))+
-      theme_bw()
+      labs(title = TeX('$a = 0.00$'))+
+      theme_bw()+
+      removeGridX()
    
+   blank <- grid.rect(gp=gpar(col="white"))
+   
+    total <- ggplot(df1, aes(x = Rho, y = Freq, color = factor(Alpha))) + 
+      geom_line()+
+      scale_x_continuous(TeX('$\\rho$'), breaks = seq(0, 1, by = 0.1))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 100, by = 10), limits = c(0,100))+
+      theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 7), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      theme_bw()+
+      labs(color = TeX("$a$"))+
+      removeGridX()
+    total <- total+theme(legend.position = c(0.15, 0.55))
+    total <- total + theme(legend.background = element_rect(fill="transparent"), legend.text = element_text(size = 6), legend.title = element_text(size=6))
 
 pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig01-Q1.pdf", width = 6, height = 3)
-  grid.arrange(p1, p2, p3, ncol=3, nrow=1)
+  grid.arrange(p1, p2, ncol=2, nrow=1)
 dev.off()  
 
 
 pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig02-Q1.pdf", width = 6, height = 3)
-  grid.arrange(p4, p5, ncol=2, nrow=1)
+  grid.arrange(p3, p4, ncol=2, nrow=1)
 dev.off()
 
 
 pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig03-Q1.pdf", width = 6, height = 3)
-  grid.arrange(p6, p7, ncol=2, nrow=1)
+  grid.arrange(p5, p6, ncol=2, nrow=1)
+dev.off()
+
+
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
+  grid.arrange(p7, blank, ncol=2, nrow=1)
+dev.off()
+
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
+  grid.arrange(p7, total, ncol=2, nrow=1)
+dev.off()
+
+
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig06-Q1.pdf", width = 6, height = 3)
+  total
 dev.off()
 ```
 
 ## Question 2
 
+Compute and make a figure of the 95% critical value function of the LR statistic as a function of $r(\beta_0)$ for $k=10$. What can you say about the critical value when $r(\beta_0)=0$ or infinite?
 
+```{r, echo = FALSE, warning = FALSE, eval = TRUE}
+  
+  PsiOne       <- rchisq(dsim, df=1)
+  PsiKminusOne <- rchisq(dsim, df=dk-1)
+  
+  vLR <- matrix(rep(0), dsim*length(rgrid), nrow = dsim, ncol = length(rgrid))
+  
+
+  for (g in 1:length(rgrid)){
+    for (s in 1:dsim){
+      vLR[s,g] <- 0.5*(PsiKminusOne[s] + PsiOne[s] - rgrid[g] +sqrt((PsiKminusOne[s] + PsiOne[s] + rgrid[g])^2-4*rgrid[g]*PsiKminusOne[s]))
+    }
+  }
+
+  LRcv <- apply(vLR, 2, quantile, probs=c(0.95), na.rm=TRUE)
+  df1 <- data.frame(RBeta = rgrid, LRcv)
+  
+  p1 <- ggplot(df1, aes(x = RBeta, y = LRcv))+
+    geom_line(colour = cores[1], size = 0.5)+
+    scale_x_continuous(TeX('$r(\\beta_0)$'), limits = c(0, 200))+
+    scale_y_continuous(TeX('95% critical value of the LR statistic'), limits = c(0,17), breaks = seq(1,18,1))+
+    theme(axis.title = element_text(size=9), axis.text.x = element_text(size = 9), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+    theme_bw()+
+    removeGridX()
+  
+pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig05-Q1.pdf", width = 6, height = 3)
+  p1
+dev.off()
+```
+
+## Question 3
+
+Repeat exercise 1 for the AR, score and LR statistics. What you conclude?
+
+```{r, echo = FALSE, warning = FALSE, eval = TRUE}
+ ## AR
+  simul_resultsAR <- vector(mode = "list", length = dsim)
+  
+  for (k in 1:dsim){
+  ### Gets the model
+   my_model <- list(1,2,3)
+   my_model <- fsimul(dn, va, vrho, dBeta, mPi)
+   lY       <- my_model[[1]]
+   lX       <- my_model[[2]]
+   mEV      <- my_model[[3]]
+
+    mrejectbetaAR <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+    
+    crit_AR <- qchisq(0.95,dk)/dk
+    
+    for (j in 1:length(vrho)){
+      for (i in 1:length(va)){
+        # AR
+        dEps               <- lY[[j]][,i] - lX[[j]][,i]*dbeta
+        model_AR_num       <- (t(dEps) %*% Pz %*% (dEps)/dk)/(t(dEps) %*% MZ %*% (dEps)/(dn-dk))
+        mrejectbetaAR[i,j] <- ifelse(model_AR_num > crit_AR, 1, 0)
+        
+        # LR
+        
+        
+        # LM
+        
+      }
+    }
+    simul_resultsAR[[k]] <- mrejectbetaAR
+  }
+
+  ARresults_final <- 0*simul_resultsAR[[1]]
+
+  for (i in 1:dsim){
+    ARresults_final <- ARresults_final + simul_resultsAR[[i]]
+  }
+
+
+``` 
