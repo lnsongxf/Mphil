@@ -3,10 +3,12 @@ title: "Adv. Microeconometrics Computer Assignment"
 author: "A. Schmidt"
 date: "11/19/2020"
 output:
-  pdf_document: default
+  html_document:
+    df_print: paged
 bibliography: references.bib
 ---
 
+  pdf_document: default
 
 
 ```{r, message = FALSE, warning = FALSE, echo = FALSE}
@@ -66,7 +68,7 @@ where:
   va    <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
   vrho  <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
   dbeta <- 0
-  dsim  <- 100
+  dsim  <- 5000
   rgrid <- seq(0,200,1)
 
   
@@ -314,33 +316,33 @@ Graph for Q1
     total <- total+theme(legend.position = c(0.15, 0.55))
     total <- total + theme(legend.background = element_rect(fill="transparent"), legend.text = element_text(size = 6), legend.title = element_text(size=6))
 
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig01-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig01-Q1.pdf", width = 6, height = 3)
   grid.arrange(p1, p2, ncol=2, nrow=1)
-dev.off()  
+#dev.off()  
 
 
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig02-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig02-Q1.pdf", width = 6, height = 3)
   grid.arrange(p3, p4, ncol=2, nrow=1)
-dev.off()
+#dev.off()
 
 
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig03-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig03-Q1.pdf", width = 6, height = 3)
   grid.arrange(p5, p6, ncol=2, nrow=1)
-dev.off()
+#dev.off()
 
 
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
   grid.arrange(p7, blank, ncol=2, nrow=1)
-dev.off()
+#dev.off()
 
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
   grid.arrange(p7, total, ncol=2, nrow=1)
-dev.off()
+#dev.off()
 
 
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig06-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig06-Q1.pdf", width = 6, height = 3)
   total
-dev.off()
+#dev.off()
 ```
 
 ## Question 2
@@ -372,9 +374,9 @@ Compute and make a figure of the 95% critical value function of the LR statistic
     theme_bw()+
     removeGridX()
   
-pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig05-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig07-Q1.pdf", width = 6, height = 3)
   p1
-dev.off()
+#dev.off()
 ```
 
 ## Question 3
@@ -382,8 +384,18 @@ dev.off()
 Repeat exercise 1 for the AR, score and LR statistics. What you conclude?
 
 ```{r, echo = FALSE, warning = FALSE, eval = TRUE}
- ## AR
+ 
   simul_resultsAR <- vector(mode = "list", length = dsim)
+  crit_AR <- qchisq(0.95,dk)/dk
+  mrejectbetaAR <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+  
+  
+  simul_resultsLM <- vector(mode = "list", length = dsim)
+  crit_LM <- qchisq(0.95,1)
+  mrejectbetaLM <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
+  
+  simul_resultsLR <- vector(mode = "list", length = dsim)
+  mrejectbetaLR <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
   
   for (k in 1:dsim){
   ### Gets the model
@@ -392,33 +404,131 @@ Repeat exercise 1 for the AR, score and LR statistics. What you conclude?
    lY       <- my_model[[1]]
    lX       <- my_model[[2]]
    mEV      <- my_model[[3]]
-
-    mrejectbetaAR <- matrix(rep(0, length(va)*length(vrho)), ncol = length(vrho), nrow = length(va))
     
-    crit_AR <- qchisq(0.95,dk)/dk
-    
+    # For each combination of rho and a, compute the test statistic
     for (j in 1:length(vrho)){
       for (i in 1:length(va)){
-        # AR
+        
         dEps               <- lY[[j]][,i] - lX[[j]][,i]*dbeta
-        model_AR_num       <- (t(dEps) %*% Pz %*% (dEps)/dk)/(t(dEps) %*% MZ %*% (dEps)/(dn-dk))
+        dSigEps            <- (1/(dn-dk))*(t(dEps) %*% MZ %*% (dEps))
+        dSigVEps           <- (1/(dn-dk))*(t(dEps) %*% MZ %*% lX[[j]][,i])
+        dhatrho            <- dSigVEps/dSigEps
+        mTildePi           <- solve(t(mZ) %*% mZ) %*% t(mZ) %*% (lX[[j]][,i] -  dEps * dhatrho)
+        ZTildePi           <- mZ %*% mTildePi
+        mPZTildePi         <- (ZTildePi) %*% solve(t(ZTildePi) %*% ZTildePi) %*% t(ZTildePi)
+        
+        # AR
+        model_AR_num       <- ((t(dEps) %*% Pz %*% (dEps))/dk)/((t(dEps) %*% MZ %*% (dEps))/(dn-dk))
         mrejectbetaAR[i,j] <- ifelse(model_AR_num > crit_AR, 1, 0)
         
-        # LR
-        
-        
         # LM
+        model_LM_num       <- (1/dSigEps)*(t(dEps) %*% mPZTildePi %*% dEps)
+        mrejectbetaLM[i,j] <- ifelse(model_LM_num > crit_LM, 1, 0)
+        
+        # LR
+        mSigmaVV   <- (1/(dn-dk))*(t(lX[[j]][,i]) %*% MZ %*% lX[[j]][,i])
+        mSigmaVEps <- mSigmaVV - (dSigVEps^2)/dSigEps
+        dkAR       <- (1/dSigEps)*(t(dEps) %*% Pz %*% dEps)
+        drbeta     <- (1/mSigmaVEps)* (t(mTildePi) %*% t(mZ) %*% mZ %*% mTildePi)
+        dLMB0      <- model_LM_num
+        
+        model_LR_num       <- 0.5*(dkAR - drbeta + sqrt((dkAR + drbeta)^2 - 4*drbeta*(dkAR-dLMB0)))
+        cr_pos             <- match(min(abs(rgrid - drbeta)), abs(rgrid - drbeta))
+        crit_LR            <- LRcv[cr_pos]
+        mrejectbetaLR[i,j] <- ifelse(model_LR_num > crit_LR, 1, 0)
         
       }
     }
     simul_resultsAR[[k]] <- mrejectbetaAR
+    simul_resultsLM[[k]] <- mrejectbetaLM
+    simul_resultsLR[[k]] <- mrejectbetaLR
   }
+  
 
   ARresults_final <- 0*simul_resultsAR[[1]]
 
   for (i in 1:dsim){
     ARresults_final <- ARresults_final + simul_resultsAR[[i]]
   }
+  
+  
+  LMresults_final <- 0*simul_resultsLM[[1]]
 
+  for (i in 1:dsim){
+    LMresults_final <- LMresults_final + simul_resultsLM[[i]]
+  }
+  
+  LRresults_final <- 0*simul_resultsLR[[1]]
+
+  for (i in 1:dsim){
+    LRresults_final <- LRresults_final + simul_resultsLR[[i]]
+  }
+  
+  # Graphs
+  
+   df1 <- data.frame(Rho = 0, Alpha = 0, Freq = 0)
+   df2 <- data.frame(Rho = 0, Alpha = 0, Freq = 0)
+   df3 <- data.frame(Rho = 0, Alpha = 0, Freq = 0)
+
+
+   for (i in 1:length(va)){
+     df  <- data.frame(Rho = vrho, Alpha = va[i], Freq = ARresults_final[i,])
+     df1 <- rbind(df1, df)
+     df  <- data.frame(Rho = vrho, Alpha = va[i], Freq = LRresults_final[i,])
+     df2 <- rbind(df2, df)
+     df  <- data.frame(Rho = vrho, Alpha = va[i], Freq = LMresults_final[i,])
+     df3 <- rbind(df3, df)
+   }
+   df1 <- df1[-1,]
+   df2 <- df2[-1,]
+   df3 <- df3[-1,]
+   
+   cores <- brewer.pal(7, "Dark2")
+   df1$Freq <- round(df1$Freq/dsim*100,0)
+   df2$Freq <- round(df2$Freq/dsim*100,0)
+   df3$Freq <- round(df3$Freq/dsim*100,0)
+   
+   
+    total_AR <- ggplot(df1, aes(x = Rho, y = Freq, color = factor(Alpha))) + 
+      geom_line()+
+      scale_x_continuous(TeX('$\\rho$'), breaks = seq(0, 1, by = 0.1))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 50, by = 5), limits = c(0,50))+
+      theme(axis.title = element_text(size=6), axis.text.x = element_text(size = 5), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      theme_bw()+
+      labs(title = TeX('AR'))+
+      labs(color = TeX("$a$"))+
+      removeGridX()
+    total_AR <- total_AR+theme(legend.position = c(0.35, 0.65))
+    total_AR <- total_AR + theme(legend.background = element_rect(fill="transparent"), legend.text = element_text(size = 5), legend.title = element_text(size=5), axis.title = element_text(size=6), axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5), panel.border = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(size = 6), legend.direction="horizontal") 
+    
+    
+    total_LR <- ggplot(df2, aes(x = Rho, y = Freq, color = factor(Alpha))) + 
+      geom_line()+
+      scale_x_continuous(TeX('$\\rho$'), breaks = seq(0, 1, by = 0.1))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 50, by = 5), limits = c(0,50))+
+      theme(axis.title = element_text(size=6), axis.text.x = element_text(size = 5), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      theme_bw()+
+      labs(color = TeX("$a$"))+
+      labs(title = TeX('LR'))+
+      removeGridX()
+    total_LR <- total_LR+theme(legend.position = c(0.35, 0.65))
+    total_LR <- total_LR + theme(legend.background = element_rect(fill="transparent"), legend.text = element_text(size = 5), legend.title = element_text(size=5), axis.title = element_text(size=6), axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5), panel.border = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(size = 6), legend.direction="horizontal") 
+
+    
+    total_LM <- ggplot(df3, aes(x = Rho, y = Freq, color = factor(Alpha))) + 
+      geom_line()+
+      scale_x_continuous(TeX('$\\rho$'), breaks = seq(0, 1, by = 0.1))+
+      scale_y_continuous(TeX('% of times $H_0: \\beta = 0$ was rejected'), breaks = seq(0, 50, by = 5), limits = c(0,50))+
+      theme(axis.title = element_text(size=6), axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5), panel.border = element_blank(), axis.line = element_line(colour = "black"))+
+      theme_bw()+
+      labs(color = TeX("$a$"))+
+      labs(title = TeX('LM'))+
+      removeGridX()
+    total_LM <- total_LM+theme(legend.position = c(0.35, 0.65))
+    total_LM <- total_LM + theme(legend.background = element_rect(fill="transparent"), legend.text = element_text(size = 5), legend.title = element_text(size=5), axis.title = element_text(size=6), axis.text.x = element_text(size = 5), axis.text.y = element_text(size = 5), panel.border = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(size = 6), legend.direction="horizontal") 
+
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig08-Q1.pdf", width = 9, height = 3)
+  grid.arrange(total_AR, total_LR, total_LM, ncol=3, nrow=1) 
+#dev.off() 
 
 ``` 
