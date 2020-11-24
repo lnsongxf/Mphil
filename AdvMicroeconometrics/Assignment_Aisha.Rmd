@@ -68,7 +68,7 @@ where:
   va    <- matrix(c(0.3, 0.25, 0.2, 0.15, 0.1, 0.05, 0), nrow = 7, ncol = 1)
   vrho  <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95)
   dbeta <- 0
-  dsim  <- 5000
+  dsim  <- 100
   rgrid <- seq(0,200,1)
 
   
@@ -319,6 +319,10 @@ Graph for Q1
 #pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig01-Q1.pdf", width = 6, height = 3)
   grid.arrange(p1, p2, ncol=2, nrow=1)
 #dev.off()  
+  
+  #pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig09-Q1.pdf", width = 6, height = 3)
+  grid.arrange(p1, p7, ncol=2, nrow=1)
+#dev.off()
 
 
 #pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig02-Q1.pdf", width = 6, height = 3)
@@ -335,7 +339,7 @@ Graph for Q1
   grid.arrange(p7, blank, ncol=2, nrow=1)
 #dev.off()
 
-#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig04-Q1.pdf", width = 6, height = 3)
+#pdf(file = "C:\\Users\\aisha\\OneDrive\\Documentos\\Mestrado Tinbergen\\Year 2\\Block 02\\Advanced Microeconometrics\\Computer assignment\\Mphil\\AdvMicroeconometrics\\Q1\\Fig05-Q1.pdf", width = 6, height = 3)
   grid.arrange(p7, total, ncol=2, nrow=1)
 #dev.off()
 
