@@ -1,0 +1,117 @@
+---
+title: "Article - Microeconometrics"
+author: "Aishameriane Schmidt"
+date: "7 de fevereiro de 2017"
+output: html_document
+---
+
+# Gender quota effect in legislative elections: an econometric analysis using diff-in-diff models for Brazil's data
+
+This report intends to report the analysis and results to be reported in a following article for the Microeconometrics course (CNM410012) offered as part of the elective courses for the Master and PhD programs of the economics department from Federal University of Santa Catarina in 2017/2.
+
+# Literature Review
+
+*DODSON, Debra L. _The impact of Women in Congress_
+It is necessary to rethink the relationship between **descriptive** representation and **substantive** representation of women. In the first one we have representatives that _look_ like the ones they represent and in the second one the representatives advocate and act like one of the group they represent would.
+
+The 103rd Congress of the United States acomplished several advances in the feminist agenda, it suffered a roll back from the 104th Congress (although the proportion of women remained the same). It suggests that not only the proportion of women matter, but they alignment with the cause are also important to promote gender equality in the legislative agenda. In the U.S. cases some authors pointed out that maybe the link was not due the increase in numbers (of women in Congress) but the increase in the participation of liberal women.
+
+In the session _previous reserach on difference_ (pag 18), Dodson cites various authors who found evidences suggesting that the increase number of women in public offices leads to more equality policies and better representation. Differences range from liberal and feminist characteristics more proeminent in women officeholders (in comparison to men) to better connection and thus understending of women's specific necessities as a group. 
+
+
+# Installing basic packages and loading the archives
+
+```{r, echo = FALSE, results = 'hide'} 
+#install.packages("electionsBR") # comented because I already have installed
+library(electionsBR)
+library(dplyr)
+```
+
+The package ```electionsBR``` was created by D. Silva, B. Costa and F. Meireles in 2016. The package collects data from TSE (Tribunal Superior Eleitoral) while decompreesing, cleaning and adjusting the enconding, making the user's life easier.
+
+All the following functions are available to make download of specific data:
+
+* candidate_fed(): data from candidates' profiles in federal elections;
+* candidate_local(): data from candidates' profiles in local (counties) elections; 
+* details_mun_zone_fed(): data on the verification of federal elections, like total votes, etc;
+* details_mun_zone_fed(): data on the verification of local (counties) elections, like total votes, etc;
+* legend_fed(): data on federal election coalitions (party denomination);
+* legend_local(): data on local (counties) election coalitions (party denomination);
+* party_mun_zone_fed(): data on total votes by parties on federal elections;
+* party_mun_zone_local(): data on total votes by parties on local elections; 
+* voter_affiliation(): data on voters' affiliation to political parties;
+* voter_profile():  data on the voters' profile;
+* vote_mun_zone_fed():  data on the polls by candidate from federal elections;
+* vote_mun_zone_locais(): data on the polls by candidate from local elections.
+
+For example, to download data from the candidates disputing the Federal Elections in 2002, the code is below:
+
+```{r, results = 'hide'}
+candidate_fed(year = 2002)
+```
+
+# Description of the problem
+
+## Timeline of the facts
+
+* 1995 - Law number 9100: local elections and minimum quota for women of 20%;
+* 1997 - Law number 9504: all offices elected by proportional vote need a minimum quota (30%) of female candidates (that could not be achieved) and broadened the number of total candidates by party;
+* 2009 - Law number 12034: the 30% of female candidates became compulsory, 10% extension in the political advertising time (for women) and 5% destination of the parties' fund to female candidacy. The last two actions never came out from the paper.
+
+## Evidences of problems
+
+(I intend to "remake" the graphs, for now they are just for reference)
+
+![Total candidates and female candidates from 90-02](candiatas_mulheres.png)
+
+![Ghost female candidates (candidates without votes) - 08-16](candidatas-fantasma.png)
+
+## The idea
+
+Using the diff-in-diff methodology, evaluate the impact of the gender quota in the elections for Counties' councils using data from 2004, 2008, 2012 and 2016 elections.
+
+# Exploring the elections data
+
+We want to gather the data from the candidates ans results of local elections in the following years: 2008, 2012, 2014 and 2016.
+
+```{r}
+anos <- seq(2004, 2016, by = 4)
+
+dados <- lapply(anos, candidate_local)
+
+
+
+dados <- bind_rows(dados)
+```
+
+# Exploring census data
+
+
+# Putting census and elections data together
+
+
+# Creating the model
+
+## Theoretical model
+
+The proposed model is:
+
+$$ln s_{it} = \alpha D_{t} + X_{i}\beta + EF_i + EF_t + \mu_{it} $$
+
+Where:
+
+* $i$ indicates the County and goes from $1$ to $5.5k$ brazilian counties;
+* $t$ indicates the period of the election (there are 4 periods available);
+* $s_{it}$ is the share (proportion) of women in the County $i$ that were elected in election $t$ (so each County has 4 $s$, one for each period);
+* $D_{t}$ is a dummy variable indicating the period before ($D_t = 0$) and after the law ($D_t = 1$); 
+* $X_i$ is a matrix with census data from County $i$;
+* $EF_i$ is the fixed effect for the County $i$;
+* $EF_t$ is the fixed effect for period $t$.
+
+## Implementing the model in R
+
+# Bibliography
+
+```{r}
+citation("electionsBR")
+```
