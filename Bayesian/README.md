@@ -14,6 +14,8 @@ _Comic credits: [xkcd](https://xkcd.com/1132/)_.
 
 ### Coding
 
+* Make a comparison between municipalities where parity was already achieved in the elections before
+* Maybe compare the effects of the 1997's bill with the one from 2009
 * Gini Index and HDI;
 * Look for cities that have only 3 periods (probably new municipalities) and remove them from the data base;
 * See if the counting of votes is being done correctly.
